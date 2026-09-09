@@ -1,0 +1,22 @@
+# 環境設定・機密データ
+.env
+data/
+*.pkl
+*.pickle
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+dist/
+build/
+
+# ログ
+logs/*.log
+
+# IDE
+.idea/
+.vscode/
+.cursor/
