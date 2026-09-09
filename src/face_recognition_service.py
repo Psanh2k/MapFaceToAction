@@ -116,9 +116,17 @@ class FaceRecognitionService:
         self._logger.info("Registered user '%s' from %s -> %s", safe_name, source, path)
         return path
 
-    def _prepare_frame(self, frame: np.ndarray) -> Tuple[np.ndarray, float]:
+    def _prepare_frame(
+        self,
+        frame: np.ndarray,
+        resize_factor: Optional[float] = None,
+    ) -> Tuple[np.ndarray, float]:
         """BGR→RGB変換とリサイズを行う。"""
-        factor = self._config.face_resize_factor
+        factor = (
+            self._config.face_resize_factor
+            if resize_factor is None
+            else resize_factor
+        )
         if factor >= 1.0:
             rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             return rgb_frame, 1.0
@@ -127,11 +135,20 @@ class FaceRecognitionService:
         rgb_frame = cv2.cvtColor(small_frame, cv2.COLOR_BGR2RGB)
         return rgb_frame, 1.0 / factor
 
-    def _detect_locations(self, rgb_frame: np.ndarray) -> List[Tuple[int, int, int, int]]:
+    def _detect_locations(
+        self,
+        rgb_frame: np.ndarray,
+        upsample: Optional[int] = None,
+    ) -> List[Tuple[int, int, int, int]]:
         """顔位置を検出する（遠距離向け upsample / model 対応）。"""
+        times = (
+            self._config.face_detection_upsample
+            if upsample is None
+            else upsample
+        )
         return face_recognition.face_locations(
             rgb_frame,
-            number_of_times_to_upsample=self._config.face_detection_upsample,
+            number_of_times_to_upsample=times,
             model=self._config.face_detection_model,
         )
 
@@ -282,18 +299,32 @@ class FaceRecognitionService:
         return len(locations), encodings
 
     def get_primary_skip_face_bbox(
-        self, frame: np.ndarray
+        self, frame: np.ndarray, *, fast: bool = False
     ) -> Optional[Tuple[int, int, int, int]]:
         """skip ユーザーの顔 bbox (left, top, right, bottom) を返す。"""
         if not self.is_loaded:
             return None
 
-        rgb_frame, scale = self._prepare_frame(frame)
-        locations = self._detect_locations(rgb_frame)
+        if fast:
+            rgb_frame, scale = self._prepare_frame(
+                frame, resize_factor=self._config.motion_face_resize_factor
+            )
+            locations = self._detect_locations(
+                rgb_frame, upsample=self._config.motion_face_upsample
+            )
+        else:
+            rgb_frame, scale = self._prepare_frame(frame)
+            locations = self._detect_locations(rgb_frame)
+
         if not locations:
             return None
 
-        encodings = self.encode_faces(frame, locations, rgb_frame=rgb_frame)
+        encodings = self.encode_faces(
+            frame,
+            locations,
+            rgb_frame=rgb_frame,
+            num_jitters=0 if fast else None,
+        )
         for location, encoding in zip(locations, encodings):
             if not self.find_matching_user(encoding):
                 continue

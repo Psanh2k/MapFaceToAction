@@ -5,9 +5,6 @@ from __future__ import annotations
 import math
 from typing import List, Tuple
 
-import numpy as np
-
-from src.face_recognition_service import FaceRecognitionService
 from src.motion_detector import MotionBBox, MotionEvent
 from src.skip_face_tracker import SkipFaceTracker
 
@@ -68,29 +65,21 @@ def has_second_person_motion(
 
 
 def should_skip_motion_minimize(
-    skip_service: FaceRecognitionService,
-    frame: np.ndarray,
     motion: MotionEvent,
     tracker: SkipFaceTracker,
     now: float,
     owner_margin: float,
-    motion_overlap_ratio: float,
 ) -> bool:
     """
-    minimize をスキップするか。
+    minimize をスキップするか（キャッシュ済み skip ゾーンのみ使用）。
 
     - skip ユーザーの motion のみ → True
     - 2人目の motion → False
     """
-    del motion_overlap_ratio  # 距離ベース判定に統一
-
-    if not skip_service.is_loaded or not motion.detected:
+    if not motion.detected:
         return False
 
-    current_bbox = skip_service.get_primary_skip_face_bbox(frame)
-    tracker.update(current_bbox, now)
     skip_zone = tracker.get_active_zone(now)
-
     if skip_zone is None:
         return False
 

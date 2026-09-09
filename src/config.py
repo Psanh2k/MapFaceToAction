@@ -160,7 +160,16 @@ class Config:
         default_factory=lambda: _env_int("MOTION_FRAME_WIDTH", 320)
     )
     motion_cooldown_seconds: float = field(
-        default_factory=lambda: _env_float("MOTION_COOLDOWN_SECONDS", 3.0)
+        default_factory=lambda: _env_float("MOTION_COOLDOWN_SECONDS", 1.0)
+    )
+    motion_skip_face_update_ms: int = field(
+        default_factory=lambda: _env_int("MOTION_SKIP_FACE_UPDATE_MS", 150)
+    )
+    motion_face_upsample: int = field(
+        default_factory=lambda: _env_int("MOTION_FACE_UPSAMPLE", 1)
+    )
+    motion_face_resize_factor: float = field(
+        default_factory=lambda: _env_float("MOTION_FACE_RESIZE_FACTOR", 0.4)
     )
     motion_dry_run: bool = field(
         default_factory=lambda: _env_bool("MOTION_DRY_RUN", False)
@@ -227,6 +236,11 @@ class Config:
     def match_reset_grace_seconds(self) -> float:
         """マッチタイマーリセット猶予（秒）。"""
         return self.match_reset_grace_ms / 1000.0
+
+    @property
+    def motion_skip_face_update_seconds(self) -> float:
+        """skip ゾーン更新間隔（秒）。"""
+        return self.motion_skip_face_update_ms / 1000.0
 
 
 def get_config() -> Config:

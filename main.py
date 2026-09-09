@@ -245,10 +245,12 @@ def run_monitor(config) -> int:
 
             if (
                 skip_face_tracker is not None
-                and now - last_skip_zone_update >= config.recognition_interval_seconds
+                and now - last_skip_zone_update >= config.motion_skip_face_update_seconds
             ):
                 last_skip_zone_update = now
-                skip_bbox = skip_face_service.get_primary_skip_face_bbox(frame)
+                skip_bbox = skip_face_service.get_primary_skip_face_bbox(
+                    frame, fast=True
+                )
                 skip_face_tracker.update(skip_bbox, now)
 
             if motion_detector is not None:
@@ -260,13 +262,10 @@ def run_monitor(config) -> int:
                             and has_skip_faces
                             and skip_face_tracker is not None
                             and should_skip_motion_minimize(
-                                skip_face_service,
-                                frame,
                                 motion_event,
                                 skip_face_tracker,
                                 now,
                                 config.motion_face_margin,
-                                config.motion_face_overlap_ratio,  # 互換用
                             )
                         )
                         if skip_for_owner:

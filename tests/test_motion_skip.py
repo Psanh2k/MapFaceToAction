@@ -66,13 +66,10 @@ def test_face_in_out_with_grace(tmp_path):
     )
 
     assert should_skip_motion_minimize(
-        service,
-        frame,
         motion,
         tracker,
         now=12.0,
         owner_margin=0.8,
-        motion_overlap_ratio=0.25,
     ) is True
 
 
@@ -94,11 +91,8 @@ def test_no_recent_skip_zone_means_minimize(tmp_path):
     )
 
     assert should_skip_motion_minimize(
-        service,
-        frame,
         motion,
         tracker,
         now=10.0,
         owner_margin=0.8,
-        motion_overlap_ratio=0.25,
     ) is False
