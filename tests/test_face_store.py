@@ -36,6 +36,29 @@ def test_save_load_delete_user(tmp_path):
     assert store.list_users() == []
 
 
+def test_migrate_root_pkls_to_kill(tmp_path):
+    """旧 data/faces/*.pkl を kill へ移行。"""
+    root = tmp_path / "faces"
+    kill_dir = root / "kill"
+    encoding = np.random.rand(128)
+
+    root.mkdir(parents=True)
+    legacy_file = root / "alice.pkl"
+    import pickle
+
+    with open(legacy_file, "wb") as fh:
+        pickle.dump(
+            {"name": "alice", "encoding": encoding.tolist(), "source": "webcam"},
+            fh,
+        )
+
+    store = FaceStore(kill_dir)
+    users = store.load_all()
+    assert "alice" in users
+    assert not legacy_file.exists()
+    assert (kill_dir / "alice.pkl").exists()
+
+
 def test_migrate_legacy(tmp_path):
     """旧 face_encoding.pkl から default へ移行。"""
     import pickle

@@ -117,8 +117,20 @@ class Config:
         default_factory=lambda: _env_bool("CHROME_KILL_ON_FACE_MATCH", True)
     )
 
+    faces_kill_data_dir: Path = field(
+        default_factory=lambda: Path(
+            os.getenv("FACES_KILL_DIR", "data/faces/kill")
+        )
+    )
+    faces_skip_data_dir: Path = field(
+        default_factory=lambda: Path(
+            os.getenv("FACES_SKIP_DIR", "data/faces/skip")
+        )
+    )
     faces_data_dir: Path = field(
-        default_factory=lambda: Path(os.getenv("FACES_DATA_DIR", "data/faces"))
+        default_factory=lambda: Path(
+            os.getenv("FACES_DATA_DIR", os.getenv("FACES_KILL_DIR", "data/faces/kill"))
+        )
     )
     face_encoding_path: Path = field(
         default_factory=lambda: Path(
@@ -169,12 +181,25 @@ class Config:
         return _PROJECT_ROOT
 
     @property
-    def faces_data_absolute_dir(self) -> Path:
-        """マルチユーザー顔データディレクトリの絶対パス。"""
-        path = self.faces_data_dir
+    def faces_kill_absolute_dir(self) -> Path:
+        """kill フロー用顔データの絶対パス。"""
+        path = self.faces_kill_data_dir
         if path.is_absolute():
             return path
         return self.project_root / path
+
+    @property
+    def faces_skip_absolute_dir(self) -> Path:
+        """skip フロー用顔データの絶対パス。"""
+        path = self.faces_skip_data_dir
+        if path.is_absolute():
+            return path
+        return self.project_root / path
+
+    @property
+    def faces_data_absolute_dir(self) -> Path:
+        """後方互換: kill フローと同じ。"""
+        return self.faces_kill_absolute_dir
 
     @property
     def face_encoding_absolute_path(self) -> Path:

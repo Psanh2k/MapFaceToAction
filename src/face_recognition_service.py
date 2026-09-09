@@ -5,7 +5,9 @@ from __future__ import annotations
 import os
 import pickle
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Literal, Optional, Tuple
+
+FaceFlow = Literal["kill", "skip"]
 
 import cv2
 import face_recognition
@@ -19,15 +21,24 @@ from src.logger import setup_logger
 class FaceRecognitionService:
     """face_recognition ライブラリをラップするサービス。"""
 
-    def __init__(self, config: Config) -> None:
+    def __init__(self, config: Config, flow: FaceFlow = "kill") -> None:
         self._config = config
+        self._flow = flow
         self._logger = setup_logger(level=config.log_level)
-        self._store = FaceStore(
-            config.faces_data_absolute_dir,
-            legacy_path=config.face_encoding_absolute_path,
-        )
+        if flow == "kill":
+            faces_dir = config.faces_kill_absolute_dir
+            legacy_path = config.face_encoding_absolute_path
+        else:
+            faces_dir = config.faces_skip_absolute_dir
+            legacy_path = None
+        self._store = FaceStore(faces_dir, legacy_path=legacy_path)
         self._registered_users: Dict[str, np.ndarray] = {}
         self._last_matched_user: Optional[str] = None
+
+    @property
+    def flow(self) -> FaceFlow:
+        """顔データの用途（kill / skip）。"""
+        return self._flow
 
     @property
     def last_matched_user(self) -> Optional[str]:
@@ -39,23 +50,36 @@ class FaceRecognitionService:
         """登録済みユーザー名一覧。"""
         return sorted(self._registered_users.keys())
 
-    def load_registered_faces(self) -> None:
-        """全登録ユーザーを読み込む。"""
+    def load_registered_faces_if_any(self) -> bool:
+        """登録ユーザーがあれば読み込む。なければ False。"""
         users = self._store.load_all()
         if not users:
-            raise FileNotFoundError(
-                f"No registered faces in {self._store.faces_dir}. "
-                "Run: python register.py <name>"
+            self._registered_users = {}
+            self._logger.info(
+                "No registered faces in %s - %s flow inactive",
+                self._store.faces_dir,
+                self._flow,
             )
+            return False
 
         self._registered_users = {
             name: user.encoding for name, user in users.items()
         }
         self._logger.info(
-            "Loaded %d registered user(s): %s",
+            "Loaded %d %s-flow user(s): %s",
             len(self._registered_users),
+            self._flow,
             ", ".join(self.registered_user_names),
         )
+        return True
+
+    def load_registered_faces(self) -> None:
+        """全登録ユーザーを読み込む（未登録時は例外）。"""
+        if not self.load_registered_faces_if_any():
+            raise FileNotFoundError(
+                f"No registered faces in {self._store.faces_dir}. "
+                f"Run: python register.py --{self._flow} <name>"
+            )
 
     def load_registered_face(self) -> None:
         """後方互換: load_registered_faces のエイリアス。"""
@@ -248,6 +272,8 @@ class FaceRecognitionService:
 
     def has_registered_user_in_frame(self, frame: np.ndarray) -> bool:
         """フレーム内に登録済みユーザーがいるか。"""
+        if not self.is_loaded:
+            return False
         _, is_match, _, _ = self.analyze_frame(frame)
         return is_match
 

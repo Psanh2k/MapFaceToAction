@@ -152,13 +152,6 @@ def run_monitor(config) -> int:
     """メイン監視ループ。"""
     logger = setup_logger(level=config.log_level)
     logger.info("Starting Face Chrome Killer")
-    if config.chrome_kill_on_face_match:
-        if config.dry_run:
-            logger.info("DRY_RUN mode enabled - Chrome will NOT be terminated")
-        else:
-            logger.info("Face match kill enabled")
-    else:
-        logger.info("Face match kill disabled - minimize flow only")
     if config.motion_detection_enabled:
         logger.info(
             "Motion detection enabled (cooldown=%.0fs, dry_run=%s, skip_registered=%s)",
@@ -174,27 +167,35 @@ def run_monitor(config) -> int:
         else:
             logger.info("Chrome minimize extension is active")
 
-    needs_face_data = config.chrome_kill_on_face_match or (
-        config.motion_detection_enabled and config.motion_skip_registered_face
-    )
+    kill_face_service = FaceRecognitionService(config, flow="kill")
+    skip_face_service = FaceRecognitionService(config, flow="skip")
+    has_kill_faces = kill_face_service.load_registered_faces_if_any()
+    has_skip_faces = skip_face_service.load_registered_faces_if_any()
+    kill_enabled = config.chrome_kill_on_face_match and has_kill_faces
 
-    face_service = FaceRecognitionService(config)
-    if needs_face_data:
-        try:
-            face_service.load_registered_faces()
-        except FileNotFoundError as exc:
-            if config.chrome_kill_on_face_match:
-                logger.error("%s", exc)
-                return 1
-            logger.warning(
-                "No registered faces - motion minimize will not skip for owner"
+    if kill_enabled:
+        if config.dry_run:
+            logger.info("DRY_RUN mode enabled - Chrome will NOT be terminated")
+        else:
+            logger.info(
+                "Face match kill enabled (%d user(s))",
+                len(kill_face_service.registered_user_names),
             )
+    elif config.chrome_kill_on_face_match:
+        logger.info("Kill flow configured but no kill users - kill disabled")
+    else:
+        logger.info("Face match kill disabled by config")
+
+    if config.motion_skip_registered_face and not has_skip_faces:
+        logger.info(
+            "No skip-flow users - motion minimize runs for all motion"
+        )
 
     camera = Camera(config)
     chrome = ChromeManager(config)
     state_machine: StateMachine | None = None
 
-    if config.chrome_kill_on_face_match:
+    if kill_enabled:
         state_machine = StateMachine(config)
 
         def on_trigger() -> None:
@@ -203,7 +204,7 @@ def run_monitor(config) -> int:
                 logger.info("Chrome is not running, skipping termination")
                 return
 
-            matched = face_service.last_matched_user or "unknown"
+            matched = kill_face_service.last_matched_user or "unknown"
             if config.dry_run:
                 logger.info(
                     "Face match detected (user: %s) - Would terminate Chrome",
@@ -237,12 +238,13 @@ def run_monitor(config) -> int:
                     if now - last_motion_action_time >= config.motion_cooldown_seconds:
                         skip_for_owner = (
                             config.motion_skip_registered_face
-                            and face_service.has_registered_user_in_frame(frame)
+                            and has_skip_faces
+                            and skip_face_service.has_registered_user_in_frame(frame)
                         )
                         if skip_for_owner:
                             logger.debug(
-                                "Motion detected but registered user '%s' present - skip minimize",
-                                face_service.last_matched_user,
+                                "Motion detected but skip user '%s' present - skip minimize",
+                                skip_face_service.last_matched_user,
                             )
                         else:
                             _handle_motion_detected(config, chrome, logger)
@@ -253,7 +255,7 @@ def run_monitor(config) -> int:
                 and now - last_recognition_time >= config.recognition_interval_seconds
             ):
                 last_recognition_time = now
-                face_count, is_match, _, matched_user = face_service.analyze_frame(frame)
+                face_count, is_match, _, matched_user = kill_face_service.analyze_frame(frame)
 
                 if face_count > 0 and not is_match:
                     logger.debug("Face detected but no match")

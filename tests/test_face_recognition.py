@@ -14,16 +14,31 @@ from src.face_recognition_service import FaceRecognitionService
 def _make_config(tmp_path: Path) -> Config:
     """テスト用 Config。"""
     config = Config()
-    config.faces_data_dir = tmp_path / "faces"
+    config.faces_kill_data_dir = tmp_path / "faces" / "kill"
+    config.faces_skip_data_dir = tmp_path / "faces" / "skip"
+    config.faces_data_dir = tmp_path / "faces" / "kill"
     config.face_encoding_path = tmp_path / "face_encoding.pkl"
     return config
+
+
+def test_kill_and_skip_flows_are_separate(tmp_path):
+    """kill / skip フローのユーザーは独立。"""
+    config = _make_config(tmp_path)
+    kill_service = FaceRecognitionService(config, flow="kill")
+    skip_service = FaceRecognitionService(config, flow="skip")
+
+    kill_service.register_user("alice", np.random.rand(128), source="webcam")
+    skip_service.register_user("bob", np.random.rand(128), source="webcam")
+
+    assert kill_service.list_users() == ["alice"]
+    assert skip_service.list_users() == ["bob"]
 
 
 def test_register_and_match_multiple_users(tmp_path):
     """複数ユーザー登録と照合。"""
     config = _make_config(tmp_path)
     config.face_match_threshold = 0.50
-    service = FaceRecognitionService(config)
+    service = FaceRecognitionService(config, flow="kill")
 
     enc_alice = np.random.rand(128)
     enc_bob = np.random.rand(128)
@@ -149,10 +164,29 @@ def test_register_from_image_multiple_faces(tmp_path):
         service.register_from_image_file(group_file, "alice")
 
 
+def test_load_registered_faces_if_any_empty(tmp_path):
+    """未登録時は False、例外なし。"""
+    config = _make_config(tmp_path)
+    service = FaceRecognitionService(config)
+
+    assert service.load_registered_faces_if_any() is False
+    assert service.is_loaded is False
+
+
+def test_has_registered_user_in_frame_without_loaded_users(tmp_path):
+    """未登録時は has_registered_user_in_frame が False。"""
+    config = _make_config(tmp_path)
+    service = FaceRecognitionService(config)
+    frame = np.zeros((480, 640, 3), dtype=np.uint8)
+
+    assert service.has_registered_user_in_frame(frame) is False
+
+
 def test_has_registered_user_in_frame(tmp_path):
     """登録ユーザー検出時のみ True。"""
     config = _make_config(tmp_path)
     service = FaceRecognitionService(config)
+    service.register_user("alice", np.random.rand(128), source="webcam")
     frame = np.zeros((480, 640, 3), dtype=np.uint8)
 
     with patch.object(

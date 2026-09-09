@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import pickle
 import re
+import shutil
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Optional
@@ -84,9 +85,26 @@ class FaceStore:
             return []
         return sorted(p.stem for p in self._faces_dir.glob("*.pkl"))
 
+    def migrate_root_pkls_if_needed(self) -> None:
+        """旧 data/faces/*.pkl を kill サブディレクトリへ移行する。"""
+        if self._faces_dir.name != "kill":
+            return
+
+        parent = self._faces_dir.parent
+        if not parent.exists():
+            return
+
+        self._faces_dir.mkdir(parents=True, exist_ok=True)
+        for path in parent.glob("*.pkl"):
+            target = self._faces_dir / path.name
+            if target.exists():
+                continue
+            shutil.move(str(path), str(target))
+
     def load_all(self) -> Dict[str, RegisteredFace]:
         """全登録ユーザーを読み込む。"""
         self.migrate_legacy_if_needed()
+        self.migrate_root_pkls_if_needed()
         users: Dict[str, RegisteredFace] = {}
         if not self._faces_dir.exists():
             return users
