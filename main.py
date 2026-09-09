@@ -12,6 +12,7 @@ from src.chrome_manager import ChromeManager
 from src.config import get_config
 from src.face_recognition_service import FaceRecognitionService
 from src.logger import setup_logger
+from src.monitor_pause import is_monitor_paused
 from src.motion_detector import MotionDetector
 from src.motion_skip import should_skip_motion_minimize
 from src.skip_face_tracker import SkipFaceTracker
@@ -233,9 +234,26 @@ def run_monitor(config) -> int:
     last_recognition_time = 0.0
     last_motion_action_time = 0.0
     last_skip_zone_update = 0.0
+    pause_logged = False
 
     try:
         while True:
+            if is_monitor_paused(config):
+                if camera.is_open:
+                    camera.release()
+                if not pause_logged:
+                    logger.info(
+                        "Monitor PAUSED - no minimize/kill. "
+                        "Resume: ./scripts/resume-monitor.sh"
+                    )
+                    pause_logged = True
+                time.sleep(0.5)
+                continue
+
+            if pause_logged:
+                logger.info("Monitor resumed")
+                pause_logged = False
+
             loop_start = time.monotonic()
             frame = camera.read_with_retry()
             if frame is None:

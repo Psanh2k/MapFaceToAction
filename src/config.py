@@ -186,6 +186,11 @@ class Config:
     motion_skip_face_grace_seconds: float = field(
         default_factory=lambda: _env_float("MOTION_SKIP_FACE_GRACE_SECONDS", 4.0)
     )
+    monitor_pause_file: Path = field(
+        default_factory=lambda: Path(
+            os.getenv("MONITOR_PAUSE_FILE", "data/.monitor_paused")
+        )
+    )
     chrome_window_classes: list[str] = field(
         default_factory=lambda: _env_list(
             "CHROME_WINDOW_CLASSES",
@@ -241,6 +246,14 @@ class Config:
     def motion_skip_face_update_seconds(self) -> float:
         """skip ゾーン更新間隔（秒）。"""
         return self.motion_skip_face_update_ms / 1000.0
+
+    @property
+    def monitor_pause_absolute_path(self) -> Path:
+        """一時停止フラグの絶対パス。"""
+        path = self.monitor_pause_file
+        if path.is_absolute():
+            return path
+        return self.project_root / path
 
 
 def get_config() -> Config:
