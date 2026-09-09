@@ -16,7 +16,9 @@ def test_is_running_detects_chrome():
     mock_proc.name.return_value = "chrome"
     mock_proc.exe.return_value = "/opt/google/chrome/chrome"
 
-    with patch.object(manager, "_get_chrome_processes", return_value=[mock_proc]):
+    mock_proc.cmdline.return_value = ["/opt/google/chrome/chrome"]
+
+    with patch.object(manager, "_get_terminate_targets", return_value=[mock_proc]):
         assert manager.is_running() is True
 
 
@@ -34,7 +36,7 @@ def test_terminate_when_not_running():
     config = Config()
     manager = ChromeManager(config)
 
-    with patch.object(manager, "_get_chrome_processes", return_value=[]):
+    with patch.object(manager, "_get_terminate_targets", return_value=[]):
         result = manager.terminate()
         assert result is True
 
@@ -45,8 +47,41 @@ def test_dry_run_no_kill():
     config.dry_run = True
     manager = ChromeManager(config)
 
-    with patch.object(manager, "_get_chrome_processes", return_value=[]):
+    with patch.object(manager, "_get_terminate_targets", return_value=[]):
         assert manager.is_running() is False
+
+
+def test_subprocess_not_in_main_only_targets():
+    """renderer 等の子プロセスは main_only では kill 対象外。"""
+    config = Config()
+    config.chrome_kill_scope = "main_only"
+    manager = ChromeManager(config)
+
+    main_proc = MagicMock()
+    main_proc.uids.return_value.real = manager._current_user
+    main_proc.name.return_value = "chrome"
+    main_proc.exe.return_value = "/opt/google/chrome/chrome"
+    main_proc.cmdline.return_value = ["/opt/google/chrome/chrome"]
+
+    renderer_proc = MagicMock()
+    renderer_proc.uids.return_value.real = manager._current_user
+    renderer_proc.name.return_value = "chrome"
+    renderer_proc.exe.return_value = "/opt/google/chrome/chrome"
+    renderer_proc.cmdline.return_value = [
+        "/opt/google/chrome/chrome",
+        "--type=renderer",
+    ]
+
+    assert manager._is_chrome_subprocess(renderer_proc) is True
+    assert manager._is_chrome_subprocess(main_proc) is False
+
+    with patch.object(
+        manager,
+        "_get_chrome_processes",
+        return_value=[main_proc, renderer_proc],
+    ):
+        targets = manager._get_terminate_targets()
+        assert targets == [main_proc]
 
 
 def test_does_not_match_other_user():

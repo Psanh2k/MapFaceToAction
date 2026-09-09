@@ -98,6 +98,40 @@ def test_multiple_faces_no_trigger():
     callback.assert_not_called()
 
 
+def test_requires_face_absence_before_retrigger():
+    """サービス kill 後は顔がフレーム外になるまで再トリガーしない。"""
+    config = _make_config(
+        required_match_seconds=0.1,
+        trigger_cooldown_seconds=0.1,
+        require_face_absence_before_retrigger=True,
+        face_absence_seconds=0.3,
+        match_reset_grace_ms=0,
+    )
+    sm = StateMachine(config)
+    callback = MagicMock()
+    sm.set_trigger_callback(callback)
+
+    sm.update(face_count=1, is_match=True)
+    time.sleep(0.2)
+    sm.update(face_count=1, is_match=True)
+    assert callback.call_count == 1
+
+    sm._transition(AppState.TRIGGERED)
+    sm._start_cooldown()
+    time.sleep(0.2)
+    sm.update(face_count=1, is_match=True)
+    assert callback.call_count == 1
+
+    sm.update(face_count=0, is_match=False)
+    time.sleep(0.4)
+    sm.update(face_count=0, is_match=False)
+
+    sm.update(face_count=1, is_match=True)
+    time.sleep(0.2)
+    sm.update(face_count=1, is_match=True)
+    assert callback.call_count == 2
+
+
 def test_cooldown_prevents_retrigger():
     """Test 7: トリガー後クールダウン中は再トリガーしない。"""
     config = _make_config(required_match_seconds=0.1, trigger_cooldown_seconds=10.0)

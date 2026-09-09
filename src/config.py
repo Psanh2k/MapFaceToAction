@@ -82,9 +82,18 @@ class Config:
     chrome_terminate_timeout: int = field(
         default_factory=lambda: _env_int("CHROME_TERMINATE_TIMEOUT", 5)
     )
+    chrome_kill_scope: str = field(
+        default_factory=lambda: os.getenv("CHROME_KILL_SCOPE", "main_only").lower()
+    )
 
     trigger_cooldown_seconds: float = field(
         default_factory=lambda: _env_float("TRIGGER_COOLDOWN_SECONDS", 30.0)
+    )
+    require_face_absence_before_retrigger: bool = field(
+        default_factory=lambda: _env_bool("REQUIRE_FACE_ABSENCE_BEFORE_RETRIGGER", True)
+    )
+    face_absence_seconds: float = field(
+        default_factory=lambda: _env_float("FACE_ABSENCE_SECONDS", 3.0)
     )
 
     log_level: str = field(default_factory=lambda: os.getenv("LOG_LEVEL", "INFO"))

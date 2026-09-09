@@ -145,7 +145,10 @@ systemctl --user disable face-chrome-killer.service
 | `RECOGNITION_INTERVAL_MS` | 300 | 認識実行間隔 (ms) |
 | `CHROME_PROCESS_NAMES` | google-chrome,chrome,... | 対象プロセス名 |
 | `CHROME_TERMINATE_TIMEOUT` | 5 | SIGTERM 待機秒数 |
+| `CHROME_KILL_SCOPE` | main_only | `main_only`=メインプロセスのみ / `all`=全 Chrome 子プロセス |
 | `TRIGGER_COOLDOWN_SECONDS` | 30 | トリガー後クールダウン |
+| `REQUIRE_FACE_ABSENCE_BEFORE_RETRIGGER` | true | kill 後、再トリガー前に顔をフレーム外へ |
+| `FACE_ABSENCE_SECONDS` | 3 | 再トリガー前に必要な「顔なし」秒数 |
 | `DRY_RUN` | true | true=Chrome を kill しない |
 | `LOG_LEVEL` | INFO | ログレベル |
 

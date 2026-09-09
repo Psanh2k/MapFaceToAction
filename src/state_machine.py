@@ -32,6 +32,8 @@ class StateMachine:
         self._last_match_time: Optional[float] = None
         self._cooldown_start_time: Optional[float] = None
         self._on_trigger: Optional[Callable[[], None]] = None
+        self._retrigger_armed: bool = True
+        self._face_absent_since: Optional[float] = None
 
     @property
     def state(self) -> AppState:
@@ -59,8 +61,33 @@ class StateMachine:
             return False
         return (now - self._last_match_time) <= self._config.match_reset_grace_seconds
 
+    def _update_retrigger_arm(self, face_count: int, now: float) -> None:
+        """再トリガー前に顔がフレーム外にあることを要求する。"""
+        if not self._config.require_face_absence_before_retrigger:
+            self._retrigger_armed = True
+            return
+
+        if self._retrigger_armed:
+            return
+
+        if face_count == 0:
+            if self._face_absent_since is None:
+                self._face_absent_since = now
+            elif now - self._face_absent_since >= self._config.face_absence_seconds:
+                self._retrigger_armed = True
+                self._face_absent_since = None
+                self._logger.info(
+                    "Face absent for %.0fs - ready for next service trigger",
+                    self._config.face_absence_seconds,
+                )
+        else:
+            self._face_absent_since = None
+
     def update(self, face_count: int, is_match: bool) -> None:
         """顔検出結果に基づいて状態を更新する。"""
+        now = time.monotonic()
+        self._update_retrigger_arm(face_count, now)
+
         # クールダウン中は処理をスキップ
         if self._state == AppState.COOLDOWN:
             if self._cooldown_start_time is not None:
@@ -70,10 +97,20 @@ class StateMachine:
                     self._cooldown_start_time = None
                     self._reset_match_timer()
                     self._transition(AppState.NO_FACE)
+                    if self._config.require_face_absence_before_retrigger:
+                        self._retrigger_armed = False
+                        self._face_absent_since = None
+                        self._logger.info(
+                            "Move face away from camera before next trigger can occur"
+                        )
                 else:
                     return
             else:
                 self._transition(AppState.NO_FACE)
+            return
+
+        # 再トリガー待機中（サービス起因 kill の後）
+        if not self._retrigger_armed:
             return
 
         # トリガー済み → クールダウンへ
@@ -87,8 +124,6 @@ class StateMachine:
             self._reset_match_timer()
             self._transition(AppState.NO_FACE)
             return
-
-        now = time.monotonic()
 
         # 顔なし
         if face_count == 0:
@@ -130,6 +165,8 @@ class StateMachine:
 
     def _fire_trigger(self) -> None:
         """トリガーコールバックを実行する。"""
+        self._retrigger_armed = False
+        self._face_absent_since = None
         if self._on_trigger is not None:
             self._on_trigger()
 
@@ -147,4 +184,6 @@ class StateMachine:
         """状態マシンを初期状態にリセットする。"""
         self._reset_match_timer()
         self._cooldown_start_time = None
+        self._retrigger_armed = True
+        self._face_absent_since = None
         self._transition(AppState.NO_FACE)
