@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import Optional, Tuple
+from dataclasses import dataclass, field
+from typing import List, Optional, Tuple
 
 import cv2
 import numpy as np
@@ -20,6 +20,7 @@ class MotionEvent:
 
     detected: bool
     bbox: Optional[MotionBBox] = None
+    bboxes: List[MotionBBox] = field(default_factory=list)
     area: float = 0.0
 
 
@@ -91,6 +92,7 @@ class MotionDetector:
             thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
         )
 
+        motion_bboxes: List[MotionBBox] = []
         best_area = 0.0
         best_bbox: Optional[MotionBBox] = None
         for contour in contours:
@@ -99,13 +101,24 @@ class MotionDetector:
                 continue
             x, y, w, h = cv2.boundingRect(contour)
             full_bbox = self._to_full_frame_bbox(x, y, w, h)
+            motion_bboxes.append(full_bbox)
             if area > best_area:
                 best_area = area
                 best_bbox = full_bbox
 
         if best_bbox is not None:
-            self._logger.debug("Motion detected (area=%.0f, bbox=%s)", best_area, best_bbox)
-            return MotionEvent(detected=True, bbox=best_bbox, area=best_area)
+            self._logger.debug(
+                "Motion detected (area=%.0f, blobs=%d, bbox=%s)",
+                best_area,
+                len(motion_bboxes),
+                best_bbox,
+            )
+            return MotionEvent(
+                detected=True,
+                bbox=best_bbox,
+                bboxes=motion_bboxes,
+                area=best_area,
+            )
 
         return MotionEvent(detected=False)
 

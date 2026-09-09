@@ -2,93 +2,99 @@
 
 from __future__ import annotations
 
-from typing import Optional, Tuple
+import math
+from typing import List, Tuple
 
 import numpy as np
 
 from src.face_recognition_service import FaceRecognitionService
 from src.motion_detector import MotionBBox, MotionEvent
+from src.skip_face_tracker import SkipFaceTracker
 
 FaceBBox = Tuple[int, int, int, int]
 
 
-def _expand_face_bbox(
-    left: int, top: int, right: int, bottom: int, margin_ratio: float
-) -> FaceBBox:
-    """顔 bbox を拡張する（left, top, right, bottom）。"""
-    width = max(right - left, 1)
-    height = max(bottom - top, 1)
-    pad_x = int(width * margin_ratio)
-    pad_y = int(height * margin_ratio)
-    return (
-        left - pad_x,
-        top - pad_y,
-        right + pad_x,
-        bottom + pad_y,
-    )
+def _motion_center(blob: MotionBBox) -> Tuple[float, float]:
+    """motion blob の中心。"""
+    return blob[0] + blob[2] / 2, blob[1] + blob[3] / 2
 
 
-def _bbox_intersection_area(a: FaceBBox, b: MotionBBox) -> float:
-    """2 bbox の交差面積。"""
-    ax1, ay1, ax2, ay2 = a[0], a[1], a[2], a[3]
-    bx, by, bw, bh = b
-    bx2, by2 = bx + bw, by + bh
-
-    ix1 = max(ax1, bx)
-    iy1 = max(ay1, by)
-    ix2 = min(ax2, bx2)
-    iy2 = min(ay2, by2)
-    if ix2 <= ix1 or iy2 <= iy1:
-        return 0.0
-    return float((ix2 - ix1) * (iy2 - iy1))
-
-
-def motion_near_skip_face(
-    motion: MotionEvent,
-    face_bbox: FaceBBox,
-    margin_ratio: float,
-    overlap_ratio: float,
+def _is_skip_user_motion_blob(
+    blob: MotionBBox,
+    skip_zone: FaceBBox,
+    owner_margin: float,
 ) -> bool:
-    """動体が skip ユーザーの顔付近か。"""
-    if not motion.detected or motion.bbox is None:
+    """
+    skip ユーザー自身の motion か。
+
+    顔中心からの距離が owner ゾーン内なら skip ユーザーの動き。
+    """
+    left, top, right, bottom = skip_zone
+    face_cx = (left + right) / 2
+    face_cy = (top + bottom) / 2
+    face_size = max(right - left, bottom - top, 1)
+    cx, cy = _motion_center(blob)
+    dist = math.hypot(cx - face_cx, cy - face_cy)
+    return dist <= face_size * (0.5 + owner_margin)
+
+
+def _motion_blobs(motion: MotionEvent) -> List[MotionBBox]:
+    """検知された全 motion blob。"""
+    if motion.bboxes:
+        return motion.bboxes
+    if motion.bbox is not None:
+        return [motion.bbox]
+    return []
+
+
+def has_second_person_motion(
+    motion: MotionEvent,
+    skip_zone: FaceBBox,
+    owner_margin: float,
+) -> bool:
+    """
+    2人目の motion があるか（顔検出不要）。
+
+    いずれかの blob が skip ユーザーの owner ゾーン外なら True。
+    """
+    blobs = _motion_blobs(motion)
+    if not blobs:
         return False
 
-    expanded = _expand_face_bbox(*face_bbox, margin_ratio)
-    motion_area = max(motion.bbox[2] * motion.bbox[3], 1)
-    overlap = _bbox_intersection_area(expanded, motion.bbox)
-    if overlap / motion_area >= overlap_ratio:
-        return True
-
-    mx = motion.bbox[0] + motion.bbox[2] / 2
-    my = motion.bbox[1] + motion.bbox[3] / 2
-    left, top, right, bottom = expanded
-    return left <= mx <= right and top <= my <= bottom
+    return any(
+        not _is_skip_user_motion_blob(blob, skip_zone, owner_margin)
+        for blob in blobs
+    )
 
 
 def should_skip_motion_minimize(
     skip_service: FaceRecognitionService,
     frame: np.ndarray,
     motion: MotionEvent,
-    face_margin_ratio: float,
+    tracker: SkipFaceTracker,
+    now: float,
+    owner_margin: float,
     motion_overlap_ratio: float,
 ) -> bool:
     """
     minimize をスキップするか。
 
-    - skip ユーザー不在 → スキップしない（minimize する）
-    - 動体が skip 顔付近 → スキップする
-    - 動体が skip 顔の外（他人の通過など）→ スキップしない
+    - skip ユーザーの motion のみ → True
+    - 2人目の motion → False
     """
-    if not skip_service.is_loaded:
+    del motion_overlap_ratio  # 距離ベース判定に統一
+
+    if not skip_service.is_loaded or not motion.detected:
         return False
 
-    face_bbox = skip_service.get_primary_skip_face_bbox(frame)
-    if face_bbox is None:
+    current_bbox = skip_service.get_primary_skip_face_bbox(frame)
+    tracker.update(current_bbox, now)
+    skip_zone = tracker.get_active_zone(now)
+
+    if skip_zone is None:
         return False
 
-    return motion_near_skip_face(
-        motion,
-        face_bbox,
-        margin_ratio=face_margin_ratio,
-        overlap_ratio=motion_overlap_ratio,
-    )
+    if has_second_person_motion(motion, skip_zone, owner_margin):
+        return False
+
+    return True
