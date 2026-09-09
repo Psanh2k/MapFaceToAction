@@ -161,7 +161,8 @@ def register_face(user_name: str) -> int:
                 draw_overlay(display, INSTRUCTIONS["multiple"], (0, 0, 255))
             else:
                 loc = locations[0]
-                scale = 1.0 / FaceRecognitionService.RESIZE_FACTOR
+                factor = config.face_resize_factor
+                scale = 1.0 / factor if factor > 0 else 1.0
                 if not service.is_face_large_enough(loc, scale):
                     draw_overlay(display, INSTRUCTIONS["too_small"], (0, 165, 255))
                 else:
@@ -174,7 +175,7 @@ def register_face(user_name: str) -> int:
                         )
                         draw_overlay(display, msg, (0, 255, 0))
                         top, right, bottom, left = loc
-                        s = FaceRecognitionService.RESIZE_FACTOR
+                        s = factor if factor > 0 else 1.0
                         cv2.rectangle(
                             display,
                             (int(left / s), int(top / s)),

@@ -142,15 +142,37 @@ systemctl --user disable face-chrome-killer.service
 
 顔データ (`data/face_encoding.pkl`) は自動削除されません。
 
+## 遠距離で認識精度を上げる
+
+1. **登録も実際の距離で行う**（近距離の写真 + 遠距離の webcam だと一致しにくい）
+   ```bash
+   # 普段座る位置で webcam 登録
+   .venv/bin/python register.py alice
+   ```
+2. `.env` の遠距離向け設定（既にデフォルト反映済み）:
+   - `CAMERA_WIDTH=1280`, `CAMERA_HEIGHT=720`
+   - `FACE_RESIZE_FACTOR=0.5`（0.25 より顔を大きく保持）
+   - `FACE_DETECTION_UPSAMPLE=2`（小さい顔を検出しやすく）
+   - `FACE_MATCH_THRESHOLD=0.58`（やや寛容）
+3. まだ難しい場合:
+   - `FACE_DETECTION_UPSAMPLE=3`
+   - `FACE_DETECTION_MODEL=cnn`（CPU 負荷大、精度向上）
+   - `FACE_MATCH_THRESHOLD=0.62`（false positive に注意）
+
 ## 設定 (.env)
 
 | 変数 | デフォルト | 説明 |
 |------|-----------|------|
 | `CAMERA_INDEX` | 0 | カメラデバイス番号 |
-| `CAMERA_WIDTH` | 640 | キャプチャ幅 |
-| `CAMERA_HEIGHT` | 480 | キャプチャ高さ |
-| `CAMERA_FPS` | 10 | キャプチャ FPS |
-| `FACE_MATCH_THRESHOLD` | 0.50 | 顔一致しきい値（距離） |
+| `CAMERA_WIDTH` | 1280 | キャプチャ幅（遠距離は 1280 推奨） |
+| `CAMERA_HEIGHT` | 720 | キャプチャ高さ |
+| `CAMERA_FPS` | 15 | キャプチャ FPS |
+| `FACE_MATCH_THRESHOLD` | 0.58 | 顔一致しきい値（高い=より寛容） |
+| `FACE_RESIZE_FACTOR` | 0.5 | リサイズ倍率（0.5=遠距離向け、0.25=高速） |
+| `FACE_DETECTION_UPSAMPLE` | 2 | 顔検出 upsample（2=小さい顔向け） |
+| `FACE_DETECTION_MODEL` | hog | `hog` または `cnn`（cnn=高精度・重い） |
+| `FACE_MIN_SIZE` | 40 | 最小顔サイズ（px） |
+| `FACE_ENCODING_JITTERS` | 1 | エンコード精度（0=高速、1=精度） |
 | `REQUIRED_MATCH_SECONDS` | 2 | トリガーに必要な連続マッチ秒数 |
 | `REQUIRE_SINGLE_FACE` | true | 単一顔のみトリガー |
 | `RECOGNITION_INTERVAL_MS` | 300 | 認識実行間隔 (ms) |

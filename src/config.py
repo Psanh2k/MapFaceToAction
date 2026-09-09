@@ -60,6 +60,21 @@ class Config:
     face_match_threshold: float = field(
         default_factory=lambda: _env_float("FACE_MATCH_THRESHOLD", 0.50)
     )
+    face_resize_factor: float = field(
+        default_factory=lambda: _env_float("FACE_RESIZE_FACTOR", 0.50)
+    )
+    face_detection_upsample: int = field(
+        default_factory=lambda: _env_int("FACE_DETECTION_UPSAMPLE", 1)
+    )
+    face_detection_model: str = field(
+        default_factory=lambda: os.getenv("FACE_DETECTION_MODEL", "hog").lower()
+    )
+    face_min_size: int = field(
+        default_factory=lambda: _env_int("FACE_MIN_SIZE", 50)
+    )
+    face_encoding_jitters: int = field(
+        default_factory=lambda: _env_int("FACE_ENCODING_JITTERS", 0)
+    )
     required_match_seconds: float = field(
         default_factory=lambda: _env_float("REQUIRED_MATCH_SECONDS", 2.0)
     )

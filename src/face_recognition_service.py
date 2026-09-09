@@ -19,11 +19,6 @@ from src.logger import setup_logger
 class FaceRecognitionService:
     """face_recognition ライブラリをラップするサービス。"""
 
-    # フレームリサイズ倍率（CPU負荷軽減）
-    RESIZE_FACTOR = 0.25
-    # 登録時の最小顔サイズ（ピクセル）
-    MIN_FACE_SIZE = 80
-
     def __init__(self, config: Config) -> None:
         self._config = config
         self._logger = setup_logger(level=config.log_level)
@@ -99,35 +94,47 @@ class FaceRecognitionService:
 
     def _prepare_frame(self, frame: np.ndarray) -> Tuple[np.ndarray, float]:
         """BGR→RGB変換とリサイズを行う。"""
-        small_frame = cv2.resize(
-            frame,
-            (0, 0),
-            fx=self.RESIZE_FACTOR,
-            fy=self.RESIZE_FACTOR,
-        )
+        factor = self._config.face_resize_factor
+        if factor >= 1.0:
+            rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            return rgb_frame, 1.0
+
+        small_frame = cv2.resize(frame, (0, 0), fx=factor, fy=factor)
         rgb_frame = cv2.cvtColor(small_frame, cv2.COLOR_BGR2RGB)
-        return rgb_frame, 1.0 / self.RESIZE_FACTOR
+        return rgb_frame, 1.0 / factor
+
+    def _detect_locations(self, rgb_frame: np.ndarray) -> List[Tuple[int, int, int, int]]:
+        """顔位置を検出する（遠距離向け upsample / model 対応）。"""
+        return face_recognition.face_locations(
+            rgb_frame,
+            number_of_times_to_upsample=self._config.face_detection_upsample,
+            model=self._config.face_detection_model,
+        )
 
     def detect_faces(self, frame: np.ndarray) -> List[Tuple[int, int, int, int]]:
         """フレーム内の顔位置 (top, right, bottom, left) を返す。"""
         rgb_frame, _ = self._prepare_frame(frame)
-        locations = face_recognition.face_locations(rgb_frame, model="hog")
-        return locations
+        return self._detect_locations(rgb_frame)
 
     def encode_faces(
         self,
         frame: np.ndarray,
         locations: List[Tuple[int, int, int, int]],
         rgb_frame: Optional[np.ndarray] = None,
-        num_jitters: int = 0,
+        num_jitters: Optional[int] = None,
     ) -> List[np.ndarray]:
         """指定位置の顔エンコーディングを生成する。"""
         if not locations:
             return []
         if rgb_frame is None:
             rgb_frame, _ = self._prepare_frame(frame)
+        jitters = (
+            self._config.face_encoding_jitters
+            if num_jitters is None
+            else num_jitters
+        )
         encodings = face_recognition.face_encodings(
-            rgb_frame, locations, num_jitters=num_jitters
+            rgb_frame, locations, num_jitters=jitters
         )
         return encodings
 
@@ -171,7 +178,11 @@ class FaceRecognitionService:
             raise FileNotFoundError(f"Image not found: {path}")
 
         image = face_recognition.load_image_file(str(path))
-        locations = face_recognition.face_locations(image, model="hog")
+        locations = face_recognition.face_locations(
+            image,
+            number_of_times_to_upsample=self._config.face_detection_upsample,
+            model=self._config.face_detection_model,
+        )
         face_count = len(locations)
 
         if face_count == 0:
@@ -232,14 +243,15 @@ class FaceRecognitionService:
         top, right, bottom, left = location
         width = (right - left) * scale
         height = (bottom - top) * scale
-        return width >= self.MIN_FACE_SIZE and height >= self.MIN_FACE_SIZE
+        min_size = self._config.face_min_size
+        return width >= min_size and height >= min_size
 
     def analyze_frame(
         self, frame: np.ndarray
     ) -> Tuple[int, bool, Optional[np.ndarray], Optional[str]]:
         """フレームを解析し (顔数, 一致, エンコーディング, ユーザー名) を返す。"""
         rgb_frame, _ = self._prepare_frame(frame)
-        locations = face_recognition.face_locations(rgb_frame, model="hog")
+        locations = self._detect_locations(rgb_frame)
         face_count = len(locations)
 
         if face_count == 0:
