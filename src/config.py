@@ -99,6 +99,9 @@ class Config:
     log_level: str = field(default_factory=lambda: os.getenv("LOG_LEVEL", "INFO"))
     dry_run: bool = field(default_factory=lambda: _env_bool("DRY_RUN", False))
 
+    faces_data_dir: Path = field(
+        default_factory=lambda: Path(os.getenv("FACES_DATA_DIR", "data/faces"))
+    )
     face_encoding_path: Path = field(
         default_factory=lambda: Path(
             os.getenv("FACE_ENCODING_PATH", "data/face_encoding.pkl")
@@ -117,8 +120,16 @@ class Config:
         return _PROJECT_ROOT
 
     @property
+    def faces_data_absolute_dir(self) -> Path:
+        """マルチユーザー顔データディレクトリの絶対パス。"""
+        path = self.faces_data_dir
+        if path.is_absolute():
+            return path
+        return self.project_root / path
+
+    @property
     def face_encoding_absolute_path(self) -> Path:
-        """顔エンコーディングファイルの絶対パス。"""
+        """旧単一ファイル形式の絶対パス（移行用）。"""
         path = self.face_encoding_path
         if path.is_absolute():
             return path

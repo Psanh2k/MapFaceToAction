@@ -107,7 +107,7 @@ def run_monitor(config) -> int:
 
     face_service = FaceRecognitionService(config)
     try:
-        face_service.load_registered_face()
+        face_service.load_registered_faces()
     except FileNotFoundError as exc:
         logger.error("%s", exc)
         return 1
@@ -122,11 +122,18 @@ def run_monitor(config) -> int:
             logger.info("Chrome is not running, skipping termination")
             return
 
+        matched = face_service.last_matched_user or "unknown"
         if config.dry_run:
-            logger.info("Face match detected - Would terminate Chrome")
+            logger.info(
+                "Face match detected (user: %s) - Would terminate Chrome",
+                matched,
+            )
             return
 
-        logger.info("Face match detected - Terminating Chrome")
+        logger.info(
+            "Face match detected (user: %s) - Terminating Chrome",
+            matched,
+        )
         chrome.terminate_gracefully()
 
     state_machine.set_trigger_callback(on_trigger)
@@ -143,12 +150,12 @@ def run_monitor(config) -> int:
             now = time.monotonic()
             if now - last_recognition_time >= config.recognition_interval_seconds:
                 last_recognition_time = now
-                face_count, is_match, _ = face_service.analyze_frame(frame)
+                face_count, is_match, _, matched_user = face_service.analyze_frame(frame)
 
                 if face_count > 0 and not is_match:
                     logger.debug("Face detected but no match")
                 elif face_count > 0 and is_match:
-                    logger.debug("Face match in progress")
+                    logger.debug("Face match in progress (user: %s)", matched_user)
 
                 state_machine.update(face_count, is_match)
 

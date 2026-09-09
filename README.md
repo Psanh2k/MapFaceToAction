@@ -33,28 +33,39 @@ cd MapFaceToAction
 ./install.sh
 ```
 
-## 顔登録
+## 顔登録（マルチユーザー）
+
+各ユーザーは `data/faces/<name>.pkl` に保存されます。登録人数 = 認識対象人数。
 
 ### Webcam から登録
 
 ```bash
-source .venv/bin/activate
-.venv/bin/python register.py
+.venv/bin/python register.py alice
+.venv/bin/python register.py bob
 ```
-
-カメラプレビューが表示されます。顔をカメラに向け、15サンプルが自動収集されるまで待ちます。`Q` でキャンセル。
 
 ### 画像ファイルから登録
 
-写真1枚があれば Webcam なしで登録できます（画像内に **1人だけ**）:
-
 ```bash
-.venv/bin/python register.py --image /path/to/person.jpg
+.venv/bin/python register.py alice --image ~/Photos/alice.jpg
+.venv/bin/python register.py bob --image ~/Photos/bob.png
 ```
 
-対応形式: `.jpg`, `.jpeg`, `.png`, `.webp` など（face_recognition が読める形式）
+画像内は **1人だけ**。元画像は保存しません。
 
-登録後 `data/face_encoding.pkl` にエンコーディングが保存されます（**元画像は保存しません**）。
+### ユーザー管理
+
+```bash
+# 一覧
+.venv/bin/python register.py --list
+
+# 削除
+.venv/bin/python register.py --delete alice
+```
+
+### 旧形式からの移行
+
+以前の `data/face_encoding.pkl` がある場合、初回起動時に自動で `default` ユーザーへ移行されます。
 
 ## テスト
 
