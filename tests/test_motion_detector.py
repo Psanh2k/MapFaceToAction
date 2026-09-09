@@ -31,5 +31,9 @@ def test_motion_on_changed_frame():
     cv2 = __import__("cv2")
     cv2.rectangle(frame2, (100, 100), (400, 400), (255, 255, 255), -1)
 
-    detector.detect(frame1)
-    assert detector.detect(frame2) is True
+    event1 = detector.detect_event(frame1)
+    assert event1.detected is False
+
+    event2 = detector.detect_event(frame2)
+    assert event2.detected is True
+    assert event2.bbox is not None

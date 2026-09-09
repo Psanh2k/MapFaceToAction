@@ -13,7 +13,7 @@ from src.config import get_config
 from src.face_recognition_service import FaceRecognitionService
 from src.logger import setup_logger
 from src.motion_detector import MotionDetector
-from src.skip_presence_tracker import SkipPresenceTracker
+from src.motion_skip import should_skip_motion_minimize
 from src.state_machine import StateMachine
 
 
@@ -222,16 +222,8 @@ def run_monitor(config) -> int:
         state_machine.set_trigger_callback(on_trigger)
 
     motion_detector = MotionDetector(config) if config.motion_detection_enabled else None
-    skip_presence_tracker = (
-        SkipPresenceTracker(config.motion_stranger_grace_seconds)
-        if config.motion_detection_enabled
-        and config.motion_skip_registered_face
-        and has_skip_faces
-        else None
-    )
     last_recognition_time = 0.0
     last_motion_action_time = 0.0
-    last_skip_scan_time = 0.0
 
     try:
         while True:
@@ -242,42 +234,34 @@ def run_monitor(config) -> int:
 
             now = time.monotonic()
 
-            if (
-                skip_presence_tracker is not None
-                and now - last_skip_scan_time >= config.recognition_interval_seconds
-            ):
-                last_skip_scan_time = now
-                skip_presence_tracker.update(skip_face_service, frame, now)
-
             if motion_detector is not None:
-                if motion_detector.detect(frame):
+                motion_event = motion_detector.detect_event(frame)
+                if motion_event.detected:
                     if now - last_motion_action_time >= config.motion_cooldown_seconds:
-                        only_skip_now = (
-                            has_skip_faces
-                            and skip_face_service.should_skip_motion_minimize(frame)
-                        )
-                        stranger_recently = (
-                            skip_presence_tracker.stranger_recently_present(now)
-                            if skip_presence_tracker is not None
-                            else False
-                        )
                         skip_for_owner = (
                             config.motion_skip_registered_face
-                            and only_skip_now
-                            and not stranger_recently
+                            and has_skip_faces
+                            and should_skip_motion_minimize(
+                                skip_face_service,
+                                frame,
+                                motion_event,
+                                config.motion_face_margin,
+                                config.motion_face_overlap_ratio,
+                            )
                         )
                         if skip_for_owner:
                             logger.debug(
-                                "Motion detected but only skip user(s) present - skip minimize"
+                                "Motion near skip user - skip minimize"
                             )
                         else:
                             if (
                                 config.motion_skip_registered_face
                                 and has_skip_faces
-                                and (not only_skip_now or stranger_recently)
+                                and skip_face_service.get_primary_skip_face_bbox(frame)
+                                is not None
                             ):
                                 logger.info(
-                                    "Motion detected with other person nearby - minimizing Chrome"
+                                    "Motion away from skip user - minimizing Chrome"
                                 )
                             _handle_motion_detected(config, chrome, logger)
                         last_motion_action_time = now

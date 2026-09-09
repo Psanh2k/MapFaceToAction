@@ -281,6 +281,31 @@ class FaceRecognitionService:
         encodings = self.encode_faces(frame, locations, rgb_frame=rgb_frame)
         return len(locations), encodings
 
+    def get_primary_skip_face_bbox(
+        self, frame: np.ndarray
+    ) -> Optional[Tuple[int, int, int, int]]:
+        """skip ユーザーの顔 bbox (left, top, right, bottom) を返す。"""
+        if not self.is_loaded:
+            return None
+
+        rgb_frame, scale = self._prepare_frame(frame)
+        locations = self._detect_locations(rgb_frame)
+        if not locations:
+            return None
+
+        encodings = self.encode_faces(frame, locations, rgb_frame=rgb_frame)
+        for location, encoding in zip(locations, encodings):
+            if not self.find_matching_user(encoding):
+                continue
+            top, right, bottom, left = location
+            return (
+                int(left * scale),
+                int(top * scale),
+                int(right * scale),
+                int(bottom * scale),
+            )
+        return None
+
     def count_skip_presence(
         self, frame: np.ndarray
     ) -> Tuple[int, int, int]:

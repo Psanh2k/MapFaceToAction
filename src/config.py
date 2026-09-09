@@ -168,8 +168,11 @@ class Config:
     motion_skip_registered_face: bool = field(
         default_factory=lambda: _env_bool("MOTION_SKIP_REGISTERED_FACE", True)
     )
-    motion_stranger_grace_seconds: float = field(
-        default_factory=lambda: _env_float("MOTION_STRANGER_GRACE_SECONDS", 3.0)
+    motion_face_margin: float = field(
+        default_factory=lambda: _env_float("MOTION_FACE_MARGIN", 0.8)
+    )
+    motion_face_overlap_ratio: float = field(
+        default_factory=lambda: _env_float("MOTION_FACE_OVERLAP_RATIO", 0.25)
     )
     chrome_window_classes: list[str] = field(
         default_factory=lambda: _env_list(
