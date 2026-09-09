@@ -152,8 +152,13 @@ def run_monitor(config) -> int:
     """メイン監視ループ。"""
     logger = setup_logger(level=config.log_level)
     logger.info("Starting Face Chrome Killer")
-    if config.dry_run:
-        logger.info("DRY_RUN mode enabled - Chrome will NOT be terminated")
+    if config.chrome_kill_on_face_match:
+        if config.dry_run:
+            logger.info("DRY_RUN mode enabled - Chrome will NOT be terminated")
+        else:
+            logger.info("Face match kill enabled")
+    else:
+        logger.info("Face match kill disabled - minimize flow only")
     if config.motion_detection_enabled:
         logger.info(
             "Motion detection enabled (cooldown=%.0fs, dry_run=%s, skip_registered=%s)",
@@ -169,38 +174,50 @@ def run_monitor(config) -> int:
         else:
             logger.info("Chrome minimize extension is active")
 
+    needs_face_data = config.chrome_kill_on_face_match or (
+        config.motion_detection_enabled and config.motion_skip_registered_face
+    )
+
     face_service = FaceRecognitionService(config)
-    try:
-        face_service.load_registered_faces()
-    except FileNotFoundError as exc:
-        logger.error("%s", exc)
-        return 1
+    if needs_face_data:
+        try:
+            face_service.load_registered_faces()
+        except FileNotFoundError as exc:
+            if config.chrome_kill_on_face_match:
+                logger.error("%s", exc)
+                return 1
+            logger.warning(
+                "No registered faces - motion minimize will not skip for owner"
+            )
 
     camera = Camera(config)
     chrome = ChromeManager(config)
-    state_machine = StateMachine(config)
+    state_machine: StateMachine | None = None
 
-    def on_trigger() -> None:
-        """顔マッチ確認後のアクション。"""
-        if not chrome.is_running():
-            logger.info("Chrome is not running, skipping termination")
-            return
+    if config.chrome_kill_on_face_match:
+        state_machine = StateMachine(config)
 
-        matched = face_service.last_matched_user or "unknown"
-        if config.dry_run:
+        def on_trigger() -> None:
+            """顔マッチ確認後のアクション。"""
+            if not chrome.is_running():
+                logger.info("Chrome is not running, skipping termination")
+                return
+
+            matched = face_service.last_matched_user or "unknown"
+            if config.dry_run:
+                logger.info(
+                    "Face match detected (user: %s) - Would terminate Chrome",
+                    matched,
+                )
+                return
+
             logger.info(
-                "Face match detected (user: %s) - Would terminate Chrome",
+                "Face match detected (user: %s) - Terminating Chrome",
                 matched,
             )
-            return
+            chrome.terminate_gracefully()
 
-        logger.info(
-            "Face match detected (user: %s) - Terminating Chrome",
-            matched,
-        )
-        chrome.terminate_gracefully()
-
-    state_machine.set_trigger_callback(on_trigger)
+        state_machine.set_trigger_callback(on_trigger)
 
     motion_detector = MotionDetector(config) if config.motion_detection_enabled else None
     last_recognition_time = 0.0
@@ -231,7 +248,10 @@ def run_monitor(config) -> int:
                             _handle_motion_detected(config, chrome, logger)
                         last_motion_action_time = now
 
-            if now - last_recognition_time >= config.recognition_interval_seconds:
+            if (
+                state_machine is not None
+                and now - last_recognition_time >= config.recognition_interval_seconds
+            ):
                 last_recognition_time = now
                 face_count, is_match, _, matched_user = face_service.analyze_frame(frame)
 
@@ -244,10 +264,14 @@ def run_monitor(config) -> int:
 
             # 次の認識タイミングまで待機（固定 FPS sleep より低遅延）
             elapsed = time.monotonic() - loop_start
-            next_tick = config.recognition_interval_seconds - (
-                time.monotonic() - last_recognition_time
-            )
-            sleep_time = max(0.01, min(next_tick, 1.0 / config.camera_fps) - elapsed)
+            frame_interval = 1.0 / config.camera_fps
+            if state_machine is not None:
+                next_tick = config.recognition_interval_seconds - (
+                    time.monotonic() - last_recognition_time
+                )
+                sleep_time = max(0.01, min(next_tick, frame_interval) - elapsed)
+            else:
+                sleep_time = max(0.01, frame_interval - elapsed)
             if sleep_time > 0:
                 time.sleep(sleep_time)
 

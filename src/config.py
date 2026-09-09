@@ -113,6 +113,9 @@ class Config:
 
     log_level: str = field(default_factory=lambda: os.getenv("LOG_LEVEL", "INFO"))
     dry_run: bool = field(default_factory=lambda: _env_bool("DRY_RUN", False))
+    chrome_kill_on_face_match: bool = field(
+        default_factory=lambda: _env_bool("CHROME_KILL_ON_FACE_MATCH", True)
+    )
 
     faces_data_dir: Path = field(
         default_factory=lambda: Path(os.getenv("FACES_DATA_DIR", "data/faces"))
