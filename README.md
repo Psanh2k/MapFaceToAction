@@ -46,28 +46,35 @@ python register.py
 
 ## テスト
 
+> Ubuntu 24.04 では `python` コマンドがない場合があります。  
+> 以下のいずれかを使ってください:
+> - `source .venv/bin/activate` してから `python main.py`
+> - `./run.sh` または `.venv/bin/python main.py`
+
 ### DRY_RUN モード（Chrome を kill しない）
 
 ```bash
-DRY_RUN=true python main.py
+DRY_RUN=true ./run.sh
+# または
+DRY_RUN=true .venv/bin/python main.py
 ```
 
 ### カメラテスト
 
 ```bash
-python main.py --test-camera
+.venv/bin/python main.py --test-camera
 ```
 
 ### Chrome プロセス検出テスト
 
 ```bash
-python main.py --test-chrome
+.venv/bin/python main.py --test-chrome
 ```
 
 実際に Chrome を終了するテスト（注意）:
 
 ```bash
-DRY_RUN=false python main.py --test-chrome --force-chrome-kill
+DRY_RUN=false .venv/bin/python main.py --test-chrome --force-chrome-kill
 ```
 
 ## 本番起動
