@@ -22,6 +22,7 @@ def test_default_config_values():
         assert config.required_match_seconds == 2.0
         assert config.require_single_face is True
         assert config.dry_run is False
+        assert config.motion_skip_registered_face is True
         assert "google-chrome" in config.chrome_process_names
 
 

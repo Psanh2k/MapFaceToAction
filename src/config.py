@@ -150,6 +150,9 @@ class Config:
     motion_dry_run: bool = field(
         default_factory=lambda: _env_bool("MOTION_DRY_RUN", False)
     )
+    motion_skip_registered_face: bool = field(
+        default_factory=lambda: _env_bool("MOTION_SKIP_REGISTERED_FACE", True)
+    )
     chrome_window_classes: list[str] = field(
         default_factory=lambda: _env_list(
             "CHROME_WINDOW_CLASSES",

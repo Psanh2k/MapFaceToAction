@@ -2,7 +2,7 @@
   "uuid": "face-chrome-killer-minimize@mapface",
   "name": "Face Chrome Killer Minimize",
   "description": "D-Bus API to minimize Chrome windows on GNOME Wayland",
-  "shell-version": ["46"],
+  "shell-version": ["45", "46"],
   "version": 1,
   "url": "https://github.com/mapface/face-chrome-killer"
 }

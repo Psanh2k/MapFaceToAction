@@ -246,6 +246,11 @@ class FaceRecognitionService:
         min_size = self._config.face_min_size
         return width >= min_size and height >= min_size
 
+    def has_registered_user_in_frame(self, frame: np.ndarray) -> bool:
+        """フレーム内に登録済みユーザーがいるか。"""
+        _, is_match, _, _ = self.analyze_frame(frame)
+        return is_match
+
     def analyze_frame(
         self, frame: np.ndarray
     ) -> Tuple[int, bool, Optional[np.ndarray], Optional[str]]:

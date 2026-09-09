@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import subprocess
 import time
+from pathlib import Path
 from typing import Optional
 
 import cv2
@@ -29,6 +31,32 @@ class Camera:
         """カメラが開いているか。"""
         return self._capture is not None and self._capture.isOpened()
 
+    def _camera_busy_hint(self, index: int) -> str:
+        """カメラ使用中の可能性がある場合のヒント。"""
+        dev = Path(f"/dev/video{index}")
+        if not dev.exists():
+            return f" Device {dev} does not exist."
+
+        try:
+            result = subprocess.run(
+                ["fuser", str(dev)],
+                capture_output=True,
+                text=True,
+                timeout=2,
+                check=False,
+            )
+            if result.returncode == 0 and result.stdout.strip():
+                pids = result.stdout.strip().replace("\n", " ")
+                return (
+                    f" Camera is in use (PIDs: {pids})."
+                    " Stop duplicate instance:"
+                    " systemctl --user stop face-chrome-killer"
+                )
+        except (FileNotFoundError, subprocess.TimeoutExpired):
+            pass
+
+        return " Ensure no other app is using the webcam."
+
     def open(self) -> None:
         """カメラを開き、解像度とFPSを設定する。"""
         if self.is_open:
@@ -40,7 +68,9 @@ class Camera:
         capture = cv2.VideoCapture(index)
         if not capture.isOpened():
             capture.release()
-            raise CameraError(f"Cannot open camera index {index}")
+            raise CameraError(
+                f"Cannot open camera index {index}.{self._camera_busy_hint(index)}"
+            )
 
         capture.set(cv2.CAP_PROP_FRAME_WIDTH, self._config.camera_width)
         capture.set(cv2.CAP_PROP_FRAME_HEIGHT, self._config.camera_height)

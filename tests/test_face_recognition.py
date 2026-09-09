@@ -149,6 +149,27 @@ def test_register_from_image_multiple_faces(tmp_path):
         service.register_from_image_file(group_file, "alice")
 
 
+def test_has_registered_user_in_frame(tmp_path):
+    """登録ユーザー検出時のみ True。"""
+    config = _make_config(tmp_path)
+    service = FaceRecognitionService(config)
+    frame = np.zeros((480, 640, 3), dtype=np.uint8)
+
+    with patch.object(
+        service,
+        "analyze_frame",
+        return_value=(1, True, np.random.rand(128), "alice"),
+    ):
+        assert service.has_registered_user_in_frame(frame) is True
+
+    with patch.object(
+        service,
+        "analyze_frame",
+        return_value=(1, False, None, None),
+    ):
+        assert service.has_registered_user_in_frame(frame) is False
+
+
 def test_encoding_file_permissions(tmp_path):
     """保存ファイルの権限が 600 であること。"""
     config = _make_config(tmp_path)

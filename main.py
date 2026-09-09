@@ -156,9 +156,10 @@ def run_monitor(config) -> int:
         logger.info("DRY_RUN mode enabled - Chrome will NOT be terminated")
     if config.motion_detection_enabled:
         logger.info(
-            "Motion detection enabled (cooldown=%.0fs, dry_run=%s)",
+            "Motion detection enabled (cooldown=%.0fs, dry_run=%s, skip_registered=%s)",
             config.motion_cooldown_seconds,
             config.motion_dry_run,
+            config.motion_skip_registered_face,
         )
         if not ChromeManager(config).is_minimize_extension_available():
             logger.warning(
@@ -217,7 +218,17 @@ def run_monitor(config) -> int:
             if motion_detector is not None:
                 if motion_detector.detect(frame):
                     if now - last_motion_action_time >= config.motion_cooldown_seconds:
-                        _handle_motion_detected(config, chrome, logger)
+                        skip_for_owner = (
+                            config.motion_skip_registered_face
+                            and face_service.has_registered_user_in_frame(frame)
+                        )
+                        if skip_for_owner:
+                            logger.debug(
+                                "Motion detected but registered user '%s' present - skip minimize",
+                                face_service.last_matched_user,
+                            )
+                        else:
+                            _handle_motion_detected(config, chrome, logger)
                         last_motion_action_time = now
 
             if now - last_recognition_time >= config.recognition_interval_seconds:
