@@ -270,6 +270,42 @@ class FaceRecognitionService:
         min_size = self._config.face_min_size
         return width >= min_size and height >= min_size
 
+    def _encode_all_faces_in_frame(
+        self, frame: np.ndarray
+    ) -> Tuple[int, List[np.ndarray]]:
+        """フレーム内の全顔をエンコードする（skip 判定用）。"""
+        rgb_frame, _ = self._prepare_frame(frame)
+        locations = self._detect_locations(rgb_frame)
+        if not locations:
+            return 0, []
+        encodings = self.encode_faces(frame, locations, rgb_frame=rgb_frame)
+        return len(locations), encodings
+
+    def should_skip_motion_minimize(self, frame: np.ndarray) -> bool:
+        """skip ユーザーのみなら True。他人が1人でもいれば False。"""
+        if not self.is_loaded:
+            return False
+
+        face_count, encodings = self._encode_all_faces_in_frame(frame)
+        if face_count == 0 or not encodings:
+            return False
+
+        skip_matches: List[str] = []
+        stranger_count = 0
+        for encoding in encodings:
+            matched = self.find_matching_user(encoding)
+            if matched:
+                skip_matches.append(matched)
+            else:
+                stranger_count += 1
+
+        if skip_matches and stranger_count == 0:
+            self._last_matched_user = skip_matches[0]
+            return True
+
+        self._last_matched_user = skip_matches[0] if skip_matches else None
+        return False
+
     def has_registered_user_in_frame(self, frame: np.ndarray) -> bool:
         """フレーム内に登録済みユーザーがいるか。"""
         if not self.is_loaded:

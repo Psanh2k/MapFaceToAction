@@ -239,12 +239,19 @@ def run_monitor(config) -> int:
                         skip_for_owner = (
                             config.motion_skip_registered_face
                             and has_skip_faces
-                            and skip_face_service.has_registered_user_in_frame(frame)
+                            and skip_face_service.should_skip_motion_minimize(frame)
                         )
                         if skip_for_owner:
                             logger.debug(
-                                "Motion detected but skip user '%s' present - skip minimize",
-                                skip_face_service.last_matched_user,
+                                "Motion detected but only skip user(s) present - skip minimize"
+                            )
+                        elif (
+                            config.motion_skip_registered_face
+                            and has_skip_faces
+                            and skip_face_service.last_matched_user
+                        ):
+                            logger.info(
+                                "Motion detected with skip user + other face - minimizing Chrome"
                             )
                         else:
                             _handle_motion_detected(config, chrome, logger)

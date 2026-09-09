@@ -182,6 +182,44 @@ def test_has_registered_user_in_frame_without_loaded_users(tmp_path):
     assert service.has_registered_user_in_frame(frame) is False
 
 
+def test_should_skip_motion_minimize_only_skip_user(tmp_path):
+    """skip ユーザーのみなら minimize をスキップ。"""
+    config = _make_config(tmp_path)
+    service = FaceRecognitionService(config, flow="skip")
+    skip_enc = np.random.rand(128)
+    service.register_user("sanhdp", skip_enc, source="webcam")
+    frame = np.zeros((480, 640, 3), dtype=np.uint8)
+
+    with patch.object(
+        service,
+        "_encode_all_faces_in_frame",
+        return_value=(1, [skip_enc]),
+    ), patch.object(service, "find_matching_user", return_value="sanhdp"):
+        assert service.should_skip_motion_minimize(frame) is True
+
+
+def test_should_skip_motion_minimize_with_stranger(tmp_path):
+    """skip ユーザー + 他人がいれば minimize する（skip しない）。"""
+    config = _make_config(tmp_path)
+    service = FaceRecognitionService(config, flow="skip")
+    skip_enc = np.random.rand(128)
+    stranger_enc = np.random.rand(128)
+    service.register_user("sanhdp", skip_enc, source="webcam")
+    frame = np.zeros((480, 640, 3), dtype=np.uint8)
+
+    def match_side_effect(encoding):
+        if np.array_equal(encoding, skip_enc):
+            return "sanhdp"
+        return None
+
+    with patch.object(
+        service,
+        "_encode_all_faces_in_frame",
+        return_value=(2, [skip_enc, stranger_enc]),
+    ), patch.object(service, "find_matching_user", side_effect=match_side_effect):
+        assert service.should_skip_motion_minimize(frame) is False
+
+
 def test_has_registered_user_in_frame(tmp_path):
     """登録ユーザー検出時のみ True。"""
     config = _make_config(tmp_path)
