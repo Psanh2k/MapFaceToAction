@@ -74,6 +74,18 @@ sed "s|%h/Workspace/Project/MapFaceToAction|$SCRIPT_DIR|g" "$SERVICE_SRC" > "$SE
 mkdir -p "$HOME/.config/systemd/user"
 systemctl --user daemon-reload
 
+# 24/7: reboot 後も user service を起動（要 sudo）
+if loginctl show-user "$USER" -p Linger 2>/dev/null | grep -q "Linger=no"; then
+    echo ""
+    echo "Enabling linger for $USER (services run after reboot without manual login)..."
+    if sudo loginctl enable-linger "$USER"; then
+        echo "Linger enabled for $USER"
+    else
+        echo "Warning: could not enable linger. Run manually:"
+        echo "  sudo loginctl enable-linger $USER"
+    fi
+fi
+
 # GNOME Shell 拡張（Wayland で Chrome minimize 用）
 EXT_UUID="face-chrome-killer-minimize@mapface"
 EXT_SRC="$SCRIPT_DIR/extension/$EXT_UUID"
@@ -96,9 +108,12 @@ echo ""
 echo "=== Installation Complete ==="
 echo ""
 echo "Next steps:"
-echo "  1. source .venv/bin/activate"
-echo "  2. python register.py          # Register your face"
-echo "  3. DRY_RUN=true python main.py # Test without killing Chrome"
-echo "  4. Edit .env: set DRY_RUN=false for production"
-echo "  5. systemctl --user enable --now face-chrome-killer.service"
+echo "  1. .venv/bin/python register.py --skip <name>   # skip minimize (optional)"
+echo "  2. .venv/bin/python register.py --kill <name>   # kill flow (optional)"
+echo "  3. Edit .env as needed"
+echo "  4. Enable 24/7 autostart:"
+echo "       systemctl --user enable --now face-chrome-killer.service"
+echo "  5. Check status:"
+echo "       systemctl --user status face-chrome-killer.service"
+echo "       journalctl --user -u face-chrome-killer.service -f"
 echo ""

@@ -1,6 +1,6 @@
 [Unit]
-Description=Face Chrome Killer - Terminate Chrome on face match
-After=graphical-session.target
+Description=Face Chrome Killer - webcam monitor (minimize/kill Chrome)
+After=graphical-session.target pipewire.service
 Wants=graphical-session.target
 
 [Service]
@@ -8,10 +8,10 @@ Type=simple
 WorkingDirectory=%h/Workspace/Project/MapFaceToAction
 EnvironmentFile=%h/Workspace/Project/MapFaceToAction/.env
 ExecStart=%h/Workspace/Project/MapFaceToAction/.venv/bin/python %h/Workspace/Project/MapFaceToAction/main.py
-Restart=on-failure
+Restart=always
 RestartSec=5
-StartLimitIntervalSec=300
+StartLimitInterval=300
 StartLimitBurst=5
 
 [Install]
-WantedBy=default.target
+WantedBy=graphical-session.target
