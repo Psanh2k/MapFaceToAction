@@ -74,6 +74,24 @@ sed "s|%h/Workspace/Project/MapFaceToAction|$SCRIPT_DIR|g" "$SERVICE_SRC" > "$SE
 mkdir -p "$HOME/.config/systemd/user"
 systemctl --user daemon-reload
 
+# GNOME Shell 拡張（Wayland で Chrome minimize 用）
+EXT_UUID="face-chrome-killer-minimize@mapface"
+EXT_SRC="$SCRIPT_DIR/extension/$EXT_UUID"
+EXT_DST="$HOME/.local/share/gnome-shell/extensions/$EXT_UUID"
+
+if [ -d "$EXT_SRC" ]; then
+    mkdir -p "$HOME/.local/share/gnome-shell/extensions"
+    rm -rf "$EXT_DST"
+    cp -r "$EXT_SRC" "$EXT_DST"
+    if command -v gnome-extensions &>/dev/null; then
+        gnome-extensions enable "$EXT_UUID" 2>/dev/null || true
+        echo "GNOME extension installed: $EXT_UUID"
+        echo "  -> Log out and log back in (or restart GNOME Shell) to activate"
+    else
+        echo "Install gnome-extensions CLI: sudo apt install gnome-shell-extension-prefs"
+    fi
+fi
+
 echo ""
 echo "=== Installation Complete ==="
 echo ""

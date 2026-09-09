@@ -142,6 +142,30 @@ systemctl --user disable face-chrome-killer.service
 
 顔データ (`data/face_encoding.pkl`) は自動削除されません。
 
+## 動体検知 → Chrome 最小化
+
+カメラ前の**動き**を検知したら Chrome を **minimize**（顔一致時の kill とは別）。
+
+```env
+MOTION_DETECTION_ENABLED=true
+MOTION_COOLDOWN_SECONDS=3
+MOTION_DRY_RUN=false   # false=実際に minimize
+DRY_RUN=true           # 顔一致 kill のみ dry-run 可
+```
+
+テスト:
+```bash
+.venv/bin/python main.py --test-chrome-minimize
+```
+
+**Wayland/GNOME 46** では GNOME Shell 拡張が必要（Shell.Eval は無効）:
+
+```bash
+./scripts/install-extension.sh
+# ログアウト → 再ログイン（必須）
+.venv/bin/python main.py --test-chrome-minimize
+```
+
 ## 遠距離で認識精度を上げる
 
 1. **登録も実際の距離で行う**（近距離の写真 + 遠距離の webcam だと一致しにくい）

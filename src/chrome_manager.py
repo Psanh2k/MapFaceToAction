@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import os
+import re
+import shutil
 import signal
+import subprocess
 import time
 from typing import List, Optional
 
@@ -150,3 +153,265 @@ class ChromeManager:
             time.sleep(0.2)
 
         return not self.is_running()
+
+    def _chrome_class_match(self, wm_class: str) -> bool:
+        """ウィンドウクラスが Chrome 対象か。"""
+        wm_lower = wm_class.lower()
+        for name in self._config.chrome_window_classes:
+            if name.lower() in wm_lower:
+                return True
+        return "chrome" in wm_lower or "chromium" in wm_lower
+
+    def _parse_gdbus_int_output(self, stdout: str) -> int:
+        """gdbus 出力から int 値を抽出する。"""
+        match = re.search(r"int32\s+(-?\d+)|\((-?\d+),", stdout)
+        if not match:
+            return 0
+        return int(match.group(1) or match.group(2))
+
+    def _parse_gdbus_eval_success(self, stdout: str) -> bool:
+        """Shell.Eval の success フラグを解析する。"""
+        return stdout.strip().startswith("(true,")
+
+    def _minimize_extension_dir(self) -> str:
+        """ユーザー拡張のインストール先。"""
+        return os.path.expanduser(
+            "~/.local/share/gnome-shell/extensions/"
+            "face-chrome-killer-minimize@mapface"
+        )
+
+    def is_minimize_extension_installed(self) -> bool:
+        """GNOME 拡張ファイルがディスク上にあるか。"""
+        ext_dir = self._minimize_extension_dir()
+        return (
+            os.path.isfile(os.path.join(ext_dir, "extension.js"))
+            and os.path.isfile(os.path.join(ext_dir, "metadata.json"))
+        )
+
+    def is_minimize_extension_registered(self) -> bool:
+        """GNOME Shell が拡張を認識しているか。"""
+        if shutil.which("gnome-extensions") is None:
+            return False
+        try:
+            result = subprocess.run(
+                ["gnome-extensions", "list"],
+                capture_output=True,
+                text=True,
+                timeout=5,
+                check=False,
+            )
+            if result.returncode != 0:
+                return False
+            return "face-chrome-killer-minimize@mapface" in result.stdout.splitlines()
+        except subprocess.TimeoutExpired:
+            return False
+
+    def is_minimize_extension_available(self) -> bool:
+        """GNOME 拡張 D-Bus が利用可能か（最小化は実行しない）。"""
+        try:
+            result = subprocess.run(
+                [
+                    "gdbus", "introspect", "--session",
+                    "--dest", "org.gnome.Shell",
+                    "--object-path", "/org/mapface/ChromeMinimize",
+                    "--recurse",
+                ],
+                capture_output=True,
+                text=True,
+                timeout=5,
+                check=False,
+            )
+            return (
+                result.returncode == 0
+                and "MinimizeChrome" in result.stdout
+            )
+        except (FileNotFoundError, subprocess.TimeoutExpired):
+            return False
+
+    def get_minimize_extension_status(self) -> str:
+        """最小化拡張の状態を人間向け文字列で返す。"""
+        if not self.is_minimize_extension_installed():
+            return "not_installed"
+        if not self.is_minimize_extension_registered():
+            return "installed_not_loaded"
+        if not self.is_minimize_extension_available():
+            return "registered_not_active"
+        return "ready"
+
+    def _minimize_via_extension(self) -> bool:
+        """GNOME Shell 拡張 D-Bus 経由で Chrome を最小化。"""
+        try:
+            result = subprocess.run(
+                [
+                    "gdbus", "call", "--session",
+                    "--dest", "org.gnome.Shell",
+                    "--object-path", "/org/mapface/ChromeMinimize",
+                    "--method", "org.mapface.ChromeMinimize.MinimizeChrome",
+                ],
+                capture_output=True,
+                text=True,
+                timeout=5,
+                check=False,
+            )
+            if result.returncode != 0:
+                self._logger.debug(
+                    "Extension minimize unavailable: %s",
+                    result.stderr.strip(),
+                )
+                return False
+
+            count = self._parse_gdbus_int_output(result.stdout)
+            if count > 0:
+                self._logger.debug("Minimized %d Chrome window(s) via extension", count)
+                return True
+
+            self._logger.debug("Extension minimize returned 0 windows")
+        except (FileNotFoundError, subprocess.TimeoutExpired) as exc:
+            self._logger.debug("Extension D-Bus call failed: %s", exc)
+        return False
+
+    def _minimize_via_gnome_shell(self) -> bool:
+        """GNOME Shell Eval（GNOME 46 では通常無効）。"""
+        class_checks = " || ".join(
+            f"cls.indexOf('{name.lower()}') >= 0"
+            for name in self._config.chrome_window_classes
+        )
+        script = (
+            "global.get_window_actors().forEach(function (w) {"
+            "  var mw = w.meta_window;"
+            "  if (!mw) return;"
+            "  var cls = (mw.get_wm_class() || '').toLowerCase();"
+            f"  if ({class_checks}) {{ mw.minimize(); }}"
+            "});"
+            "1;"
+        )
+        try:
+            result = subprocess.run(
+                [
+                    "gdbus", "call", "--session",
+                    "--dest", "org.gnome.Shell",
+                    "--object-path", "/org/gnome/Shell",
+                    "--method", "org.gnome.Shell.Eval",
+                    script,
+                ],
+                capture_output=True,
+                text=True,
+                timeout=5,
+                check=False,
+            )
+            if result.returncode == 0 and self._parse_gdbus_eval_success(result.stdout):
+                return True
+            self._logger.debug(
+                "Shell.Eval minimize failed: %s",
+                result.stdout.strip() or result.stderr.strip(),
+            )
+        except (FileNotFoundError, subprocess.TimeoutExpired) as exc:
+            self._logger.debug("gdbus not available: %s", exc)
+        return False
+
+    def _minimize_via_xdotool(self) -> bool:
+        """X11 上で xdotool により Chrome を最小化。"""
+        if shutil.which("xdotool") is None:
+            return False
+
+        minimized = False
+        for class_name in self._config.chrome_window_classes:
+            try:
+                result = subprocess.run(
+                    [
+                        "xdotool", "search", "--class", class_name,
+                        "windowminimize",
+                    ],
+                    capture_output=True,
+                    text=True,
+                    timeout=5,
+                    check=False,
+                )
+                if result.returncode == 0 and result.stdout.strip():
+                    minimized = True
+            except subprocess.TimeoutExpired:
+                self._logger.warning("xdotool timeout for class %s", class_name)
+        return minimized
+
+    def _minimize_via_wmctrl(self) -> bool:
+        """wmctrl で Chrome ウィンドウを hidden/minimize。"""
+        if shutil.which("wmctrl") is None:
+            return False
+
+        try:
+            result = subprocess.run(
+                ["wmctrl", "-lx"],
+                capture_output=True,
+                text=True,
+                timeout=5,
+                check=False,
+            )
+            if result.returncode != 0:
+                return False
+
+            minimized = False
+            for line in result.stdout.splitlines():
+                parts = line.split(None, 4)
+                if len(parts) < 5:
+                    continue
+                window_id, wm_class = parts[0], parts[2]
+                if not self._chrome_class_match(wm_class):
+                    continue
+                hide = subprocess.run(
+                    ["wmctrl", "-i", "-r", window_id, "-b", "add,hidden"],
+                    capture_output=True,
+                    text=True,
+                    timeout=5,
+                    check=False,
+                )
+                if hide.returncode == 0:
+                    minimized = True
+            return minimized
+        except subprocess.TimeoutExpired:
+            self._logger.warning("wmctrl timeout")
+            return False
+
+    def minimize(self) -> bool:
+        """Chrome ウィンドウを最小化する（動体検知トリガー専用）。"""
+        if not self.is_running():
+            self._logger.info("Chrome is not running, skipping minimize")
+            return True
+
+        self._logger.info("Minimizing Chrome windows")
+
+        backends = (
+            ("gnome_extension", self._minimize_via_extension),
+            ("gnome_shell", self._minimize_via_gnome_shell),
+            ("xdotool", self._minimize_via_xdotool),
+            ("wmctrl", self._minimize_via_wmctrl),
+        )
+        for backend_name, minimize_fn in backends:
+            if minimize_fn():
+                self._logger.info("Chrome minimized via %s", backend_name)
+                return True
+
+        status = self.get_minimize_extension_status()
+        if status == "not_installed":
+            self._logger.warning(
+                "Could not minimize Chrome (Wayland). "
+                "Run: ./scripts/install-extension.sh then log out/in. "
+                "Test: python main.py --test-chrome-minimize"
+            )
+        elif status == "installed_not_loaded":
+            self._logger.warning(
+                "GNOME extension is installed but not loaded. "
+                "Log out and log back in (or reboot), then retry. "
+                "Verify: gnome-extensions list --enabled | grep face-chrome-killer-minimize"
+            )
+        elif status == "registered_not_active":
+            self._logger.warning(
+                "GNOME extension is registered but D-Bus API is unavailable. "
+                "Enable it: gnome-extensions enable face-chrome-killer-minimize@mapface "
+                "then log out/in."
+            )
+        else:
+            self._logger.warning(
+                "Could not minimize Chrome. "
+                "Ensure Chrome windows are open and retry."
+            )
+        return False

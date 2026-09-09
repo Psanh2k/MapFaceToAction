@@ -12,6 +12,7 @@ from src.chrome_manager import ChromeManager
 from src.config import get_config
 from src.face_recognition_service import FaceRecognitionService
 from src.logger import setup_logger
+from src.motion_detector import MotionDetector
 from src.state_machine import StateMachine
 
 
@@ -33,6 +34,11 @@ def parse_args() -> argparse.Namespace:
         "--force-chrome-kill",
         action="store_true",
         help="Actually terminate Chrome during --test-chrome (requires confirmation)",
+    )
+    parser.add_argument(
+        "--test-chrome-minimize",
+        action="store_true",
+        help="Test Chrome window minimize",
     )
     return parser.parse_args()
 
@@ -98,12 +104,69 @@ def test_chrome(config, force_kill: bool = False) -> int:
     return 1
 
 
+def test_chrome_minimize(config) -> int:
+    """Chrome 最小化テスト。"""
+    logger = setup_logger(level=config.log_level)
+    logger.info("=== Chrome Minimize Test Mode ===")
+
+    chrome = ChromeManager(config)
+    if not chrome.is_running():
+        logger.info("Chrome is not running")
+        return 0
+
+    if config.motion_dry_run:
+        logger.info("MOTION_DRY_RUN=true: Would minimize Chrome")
+        return 0
+
+    ext_status = chrome.get_minimize_extension_status()
+    logger.info("Minimize extension status: %s", ext_status)
+    if ext_status == "installed_not_loaded":
+        logger.warning(
+            "Extension on disk but GNOME Shell has not loaded it yet. "
+            "Log out/in (or reboot) after ./scripts/install-extension.sh"
+        )
+
+    if chrome.minimize():
+        logger.info("Chrome minimize test passed")
+        return 0
+
+    logger.error("Chrome minimize test failed")
+    return 1
+
+
+def _handle_motion_detected(config, chrome, logger) -> None:
+    """動体検知時に Chrome を最小化。"""
+    if not chrome.is_running():
+        logger.debug("Motion detected but Chrome is not running")
+        return
+
+    if config.motion_dry_run:
+        logger.info("Motion detected - Would minimize Chrome")
+        return
+
+    logger.info("Motion detected - Minimizing Chrome")
+    chrome.minimize()
+
+
 def run_monitor(config) -> int:
     """メイン監視ループ。"""
     logger = setup_logger(level=config.log_level)
     logger.info("Starting Face Chrome Killer")
     if config.dry_run:
         logger.info("DRY_RUN mode enabled - Chrome will NOT be terminated")
+    if config.motion_detection_enabled:
+        logger.info(
+            "Motion detection enabled (cooldown=%.0fs, dry_run=%s)",
+            config.motion_cooldown_seconds,
+            config.motion_dry_run,
+        )
+        if not ChromeManager(config).is_minimize_extension_available():
+            logger.warning(
+                "Chrome minimize extension not active. "
+                "Run: ./scripts/install-extension.sh then log out/in"
+            )
+        else:
+            logger.info("Chrome minimize extension is active")
 
     face_service = FaceRecognitionService(config)
     try:
@@ -138,7 +201,9 @@ def run_monitor(config) -> int:
 
     state_machine.set_trigger_callback(on_trigger)
 
+    motion_detector = MotionDetector(config) if config.motion_detection_enabled else None
     last_recognition_time = 0.0
+    last_motion_action_time = 0.0
 
     try:
         while True:
@@ -148,6 +213,13 @@ def run_monitor(config) -> int:
                 continue
 
             now = time.monotonic()
+
+            if motion_detector is not None:
+                if motion_detector.detect(frame):
+                    if now - last_motion_action_time >= config.motion_cooldown_seconds:
+                        _handle_motion_detected(config, chrome, logger)
+                        last_motion_action_time = now
+
             if now - last_recognition_time >= config.recognition_interval_seconds:
                 last_recognition_time = now
                 face_count, is_match, _, matched_user = face_service.analyze_frame(frame)
@@ -188,6 +260,8 @@ def main() -> int:
         return test_camera(config)
     if args.test_chrome:
         return test_chrome(config, force_kill=args.force_chrome_kill)
+    if args.test_chrome_minimize:
+        return test_chrome_minimize(config)
 
     return run_monitor(config)
 

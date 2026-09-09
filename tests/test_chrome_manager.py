@@ -96,6 +96,44 @@ def test_does_not_match_other_user():
     assert manager._is_chrome_process(mock_proc) is False
 
 
+def test_minimize_uses_extension_first():
+    """最小化は GNOME 拡張を優先。"""
+    config = Config()
+    manager = ChromeManager(config)
+
+    with patch.object(manager, "is_running", return_value=True), patch.object(
+        manager, "_minimize_via_extension", return_value=True
+    ) as mock_ext, patch.object(
+        manager, "_minimize_via_gnome_shell", return_value=True
+    ) as mock_gnome:
+        assert manager.minimize() is True
+        mock_ext.assert_called_once()
+        mock_gnome.assert_not_called()
+
+
+def test_gnome_eval_parses_false_as_failure():
+    """Shell.Eval が (false,) の場合は失敗。"""
+    config = Config()
+    manager = ChromeManager(config)
+
+    with patch.object(manager, "is_running", return_value=True), patch.object(
+        manager, "_minimize_via_extension", return_value=False
+    ), patch(
+        "src.chrome_manager.subprocess.run",
+        return_value=MagicMock(returncode=0, stdout="(false, '')", stderr=""),
+    ):
+        assert manager._minimize_via_gnome_shell() is False
+
+
+def test_minimize_when_not_running():
+    """Chrome 未実行時は最小化スキップ。"""
+    config = Config()
+    manager = ChromeManager(config)
+
+    with patch.object(manager, "is_running", return_value=False):
+        assert manager.minimize() is True
+
+
 def test_does_not_match_chromedriver():
     """chromedriver は対象外。"""
     config = Config()

@@ -129,6 +129,34 @@ class Config:
         default_factory=lambda: _env_int("REGISTRATION_MIN_SAMPLES", 10)
     )
 
+    motion_detection_enabled: bool = field(
+        default_factory=lambda: _env_bool("MOTION_DETECTION_ENABLED", True)
+    )
+    motion_threshold: int = field(
+        default_factory=lambda: _env_int("MOTION_THRESHOLD", 25)
+    )
+    motion_min_area: int = field(
+        default_factory=lambda: _env_int("MOTION_MIN_AREA", 1500)
+    )
+    motion_blur_size: int = field(
+        default_factory=lambda: _env_int("MOTION_BLUR_SIZE", 21)
+    )
+    motion_frame_width: int = field(
+        default_factory=lambda: _env_int("MOTION_FRAME_WIDTH", 320)
+    )
+    motion_cooldown_seconds: float = field(
+        default_factory=lambda: _env_float("MOTION_COOLDOWN_SECONDS", 3.0)
+    )
+    motion_dry_run: bool = field(
+        default_factory=lambda: _env_bool("MOTION_DRY_RUN", False)
+    )
+    chrome_window_classes: list[str] = field(
+        default_factory=lambda: _env_list(
+            "CHROME_WINDOW_CLASSES",
+            ["google-chrome", "Google-chrome", "chromium", "Chromium"],
+        )
+    )
+
     @property
     def project_root(self) -> Path:
         """プロジェクトルートディレクトリ。"""
