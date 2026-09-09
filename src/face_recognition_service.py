@@ -281,29 +281,47 @@ class FaceRecognitionService:
         encodings = self.encode_faces(frame, locations, rgb_frame=rgb_frame)
         return len(locations), encodings
 
-    def should_skip_motion_minimize(self, frame: np.ndarray) -> bool:
-        """skip ユーザーのみなら True。他人が1人でもいれば False。"""
+    def count_skip_presence(
+        self, frame: np.ndarray
+    ) -> Tuple[int, int, int]:
+        """(顔数, skip一致数, 未登録顔数) を返す。"""
         if not self.is_loaded:
-            return False
+            return 0, 0, 0
 
         face_count, encodings = self._encode_all_faces_in_frame(frame)
-        if face_count == 0 or not encodings:
-            return False
+        if face_count == 0:
+            return 0, 0, 0
 
-        skip_matches: List[str] = []
+        skip_count = 0
         stranger_count = 0
+        first_skip: Optional[str] = None
         for encoding in encodings:
             matched = self.find_matching_user(encoding)
             if matched:
-                skip_matches.append(matched)
+                skip_count += 1
+                if first_skip is None:
+                    first_skip = matched
             else:
                 stranger_count += 1
 
-        if skip_matches and stranger_count == 0:
-            self._last_matched_user = skip_matches[0]
+        # encoding 失敗分も未登録顔として扱う
+        stranger_count += max(0, face_count - len(encodings))
+        self._last_matched_user = first_skip
+        return face_count, skip_count, stranger_count
+
+    def should_skip_motion_minimize(self, frame: np.ndarray) -> bool:
+        """skip ユーザーのみなら True。他人が1人でもいれば False。"""
+        face_count, skip_count, stranger_count = self.count_skip_presence(frame)
+        if face_count == 0:
+            return False
+
+        # 複数人が映っている（encoding 失敗含む）
+        if face_count >= 2:
+            return False
+
+        if skip_count == 1 and stranger_count == 0:
             return True
 
-        self._last_matched_user = skip_matches[0] if skip_matches else None
         return False
 
     def has_registered_user_in_frame(self, frame: np.ndarray) -> bool:

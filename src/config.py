@@ -168,6 +168,9 @@ class Config:
     motion_skip_registered_face: bool = field(
         default_factory=lambda: _env_bool("MOTION_SKIP_REGISTERED_FACE", True)
     )
+    motion_stranger_grace_seconds: float = field(
+        default_factory=lambda: _env_float("MOTION_STRANGER_GRACE_SECONDS", 3.0)
+    )
     chrome_window_classes: list[str] = field(
         default_factory=lambda: _env_list(
             "CHROME_WINDOW_CLASSES",
