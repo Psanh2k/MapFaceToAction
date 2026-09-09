@@ -29,6 +29,7 @@ class StateMachine:
         self._logger = setup_logger(level=config.log_level)
         self._state = AppState.NO_FACE
         self._match_start_time: Optional[float] = None
+        self._last_match_time: Optional[float] = None
         self._cooldown_start_time: Optional[float] = None
         self._on_trigger: Optional[Callable[[], None]] = None
 
@@ -50,6 +51,13 @@ class StateMachine:
     def _reset_match_timer(self) -> None:
         """マッチタイマーをリセットする。"""
         self._match_start_time = None
+        self._last_match_time = None
+
+    def _within_match_grace(self, now: float) -> bool:
+        """直近マッチから猶予時間内か。"""
+        if self._last_match_time is None:
+            return False
+        return (now - self._last_match_time) <= self._config.match_reset_grace_seconds
 
     def update(self, face_count: int, is_match: bool) -> None:
         """顔検出結果に基づいて状態を更新する。"""
@@ -80,8 +88,13 @@ class StateMachine:
             self._transition(AppState.NO_FACE)
             return
 
+        now = time.monotonic()
+
         # 顔なし
         if face_count == 0:
+            if self._state == AppState.MATCHING and self._within_match_grace(now):
+                self._logger.debug("Face briefly lost, within grace period")
+                return
             if self._state in (AppState.MATCHING, AppState.FACE_DETECTED):
                 self._logger.debug("Face lost, resetting match timer")
             self._reset_match_timer()
@@ -90,6 +103,9 @@ class StateMachine:
 
         # 1顔だが不一致
         if not is_match:
+            if self._state == AppState.MATCHING and self._within_match_grace(now):
+                self._logger.debug("Face briefly unmatched, within grace period")
+                return
             if self._state == AppState.MATCHING:
                 self._logger.debug("Face no longer matches, resetting")
             self._reset_match_timer()
@@ -97,7 +113,7 @@ class StateMachine:
             return
 
         # 1顔で一致
-        now = time.monotonic()
+        self._last_match_time = now
         if self._match_start_time is None:
             self._match_start_time = now
             self._logger.info("Face match started")

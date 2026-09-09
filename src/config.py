@@ -69,6 +69,9 @@ class Config:
     recognition_interval_ms: int = field(
         default_factory=lambda: _env_int("RECOGNITION_INTERVAL_MS", 300)
     )
+    match_reset_grace_ms: int = field(
+        default_factory=lambda: _env_int("MATCH_RESET_GRACE_MS", 400)
+    )
 
     chrome_process_names: list[str] = field(
         default_factory=lambda: _env_list(
@@ -116,6 +119,11 @@ class Config:
     def recognition_interval_seconds(self) -> float:
         """認識間隔（秒）。"""
         return self.recognition_interval_ms / 1000.0
+
+    @property
+    def match_reset_grace_seconds(self) -> float:
+        """マッチタイマーリセット猶予（秒）。"""
+        return self.match_reset_grace_ms / 1000.0
 
 
 def get_config() -> Config:

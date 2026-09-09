@@ -3,8 +3,10 @@
 
 from __future__ import annotations
 
+import argparse
 import sys
 import time
+from pathlib import Path
 
 import cv2
 
@@ -12,6 +14,17 @@ from src.camera import Camera, CameraError
 from src.config import get_config
 from src.face_recognition_service import FaceRecognitionService
 from src.logger import setup_logger
+
+
+def parse_args() -> argparse.Namespace:
+    """CLI引数を解析する。"""
+    parser = argparse.ArgumentParser(description="Register face for Face Chrome Killer")
+    parser.add_argument(
+        "--image",
+        type=str,
+        help="Register from image file instead of webcam (e.g. photo.jpg)",
+    )
+    return parser.parse_args()
 
 
 INSTRUCTIONS = {
@@ -37,6 +50,24 @@ def draw_overlay(frame, text: str, color=(0, 255, 0)) -> None:
         2,
         cv2.LINE_AA,
     )
+
+
+def register_from_image(image_path: str) -> int:
+    """画像ファイルから顔を登録する。"""
+    config = get_config()
+    logger = setup_logger(level=config.log_level)
+    logger.info("=== Face Registration from Image ===")
+
+    service = FaceRecognitionService(config)
+    try:
+        save_path = service.register_from_image_file(Path(image_path))
+    except (FileNotFoundError, ValueError) as exc:
+        logger.error("%s", exc)
+        return 1
+
+    logger.info("Registration complete!")
+    logger.info("Saved to: %s", save_path)
+    return 0
 
 
 def register_face() -> int:
@@ -134,4 +165,7 @@ def register_face() -> int:
 
 
 if __name__ == "__main__":
+    args = parse_args()
+    if args.image:
+        sys.exit(register_from_image(args.image))
     sys.exit(register_face())

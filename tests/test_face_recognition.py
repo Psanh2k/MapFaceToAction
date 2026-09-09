@@ -92,7 +92,7 @@ def test_analyze_frame_no_face():
     service = FaceRecognitionService(config)
 
     frame = np.zeros((480, 640, 3), dtype=np.uint8)
-    with patch.object(service, "detect_faces", return_value=[]):
+    with patch("src.face_recognition_service.face_recognition.face_locations", return_value=[]):
         count, matched, _ = service.analyze_frame(frame)
         assert count == 0
         assert matched is False
@@ -107,10 +107,56 @@ def test_analyze_frame_multiple_faces(tmp_path):
 
     frame = np.zeros((480, 640, 3), dtype=np.uint8)
     locations = [(10, 100, 100, 10), (10, 200, 100, 110)]
-    with patch.object(service, "detect_faces", return_value=locations):
+    with patch(
+        "src.face_recognition_service.face_recognition.face_locations",
+        return_value=locations,
+    ):
         count, matched, _ = service.analyze_frame(frame)
         assert count == 2
         assert matched is False
+
+
+def test_register_from_image_file(tmp_path):
+    """画像ファイルからの登録。"""
+    config = _make_config(tmp_path)
+    service = FaceRecognitionService(config)
+    encoding = np.random.rand(128)
+    locations = [(10, 100, 100, 10)]
+
+    with patch(
+        "src.face_recognition_service.face_recognition.load_image_file",
+        return_value=np.zeros((480, 640, 3), dtype=np.uint8),
+    ), patch(
+        "src.face_recognition_service.face_recognition.face_locations",
+        return_value=locations,
+    ), patch(
+        "src.face_recognition_service.face_recognition.face_encodings",
+        return_value=[encoding],
+    ):
+        image_file = tmp_path / "person.jpg"
+        image_file.write_bytes(b"fake")
+        save_path = service.register_from_image_file(image_file)
+
+    assert save_path.exists()
+    service.load_registered_face()
+    assert service.is_match(encoding)
+
+
+def test_register_from_image_multiple_faces(tmp_path):
+    """複数顔の画像は拒否。"""
+    config = _make_config(tmp_path)
+    service = FaceRecognitionService(config)
+
+    with patch(
+        "src.face_recognition_service.face_recognition.load_image_file",
+        return_value=np.zeros((480, 640, 3), dtype=np.uint8),
+    ), patch(
+        "src.face_recognition_service.face_recognition.face_locations",
+        return_value=[(10, 100, 100, 10), (10, 200, 100, 110)],
+    ), pytest.raises(ValueError, match="Multiple faces"):
+        group_file = tmp_path / "group.jpg"
+        group_file.write_bytes(b"fake")
+        service.register_from_image_file(group_file)
 
 
 def test_encoding_file_permissions(tmp_path):

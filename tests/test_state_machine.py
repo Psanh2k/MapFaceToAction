@@ -41,7 +41,7 @@ def test_unknown_face_no_trigger():
 
 def test_brief_match_no_trigger():
     """Test 3: 登録顔が一瞬 → トリガーなし。"""
-    config = _make_config(required_match_seconds=2.0)
+    config = _make_config(required_match_seconds=2.0, match_reset_grace_ms=0)
     sm = StateMachine(config)
     callback = MagicMock()
     sm.set_trigger_callback(callback)
@@ -51,6 +51,24 @@ def test_brief_match_no_trigger():
     sm.update(face_count=0, is_match=False)
     assert sm.state == AppState.NO_FACE
     callback.assert_not_called()
+
+
+def test_match_grace_allows_brief_miss():
+    """短い不一致は猶予内ならタイマーを維持する。"""
+    config = _make_config(
+        required_match_seconds=0.5,
+        match_reset_grace_ms=500,
+    )
+    sm = StateMachine(config)
+    callback = MagicMock()
+    sm.set_trigger_callback(callback)
+
+    sm.update(face_count=1, is_match=True)
+    sm.update(face_count=1, is_match=False)
+    assert sm.state == AppState.MATCHING
+    time.sleep(0.6)
+    sm.update(face_count=1, is_match=True)
+    callback.assert_called_once()
 
 
 def test_continuous_match_triggers():

@@ -135,6 +135,7 @@ def run_monitor(config) -> int:
 
     try:
         while True:
+            loop_start = time.monotonic()
             frame = camera.read_with_retry()
             if frame is None:
                 continue
@@ -151,7 +152,14 @@ def run_monitor(config) -> int:
 
                 state_machine.update(face_count, is_match)
 
-            time.sleep(1.0 / config.camera_fps)
+            # 次の認識タイミングまで待機（固定 FPS sleep より低遅延）
+            elapsed = time.monotonic() - loop_start
+            next_tick = config.recognition_interval_seconds - (
+                time.monotonic() - last_recognition_time
+            )
+            sleep_time = max(0.01, min(next_tick, 1.0 / config.camera_fps) - elapsed)
+            if sleep_time > 0:
+                time.sleep(sleep_time)
 
     except KeyboardInterrupt:
         logger.info("Shutting down...")

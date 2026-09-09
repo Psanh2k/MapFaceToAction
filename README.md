@@ -35,14 +35,26 @@ cd MapFaceToAction
 
 ## 顔登録
 
+### Webcam から登録
+
 ```bash
 source .venv/bin/activate
-python register.py
+.venv/bin/python register.py
 ```
 
 カメラプレビューが表示されます。顔をカメラに向け、15サンプルが自動収集されるまで待ちます。`Q` でキャンセル。
 
-登録後 `data/face_encoding.pkl` にエンコーディングが保存されます（顔画像は保存しません）。
+### 画像ファイルから登録
+
+写真1枚があれば Webcam なしで登録できます（画像内に **1人だけ**）:
+
+```bash
+.venv/bin/python register.py --image /path/to/person.jpg
+```
+
+対応形式: `.jpg`, `.jpeg`, `.png`, `.webp` など（face_recognition が読める形式）
+
+登録後 `data/face_encoding.pkl` にエンコーディングが保存されます（**元画像は保存しません**）。
 
 ## テスト
 

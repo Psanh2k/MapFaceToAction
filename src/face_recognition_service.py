@@ -80,12 +80,17 @@ class FaceRecognitionService:
         self,
         frame: np.ndarray,
         locations: List[Tuple[int, int, int, int]],
+        rgb_frame: Optional[np.ndarray] = None,
+        num_jitters: int = 0,
     ) -> List[np.ndarray]:
         """指定位置の顔エンコーディングを生成する。"""
         if not locations:
             return []
-        rgb_frame, _ = self._prepare_frame(frame)
-        encodings = face_recognition.face_encodings(rgb_frame, locations)
+        if rgb_frame is None:
+            rgb_frame, _ = self._prepare_frame(frame)
+        encodings = face_recognition.face_encodings(
+            rgb_frame, locations, num_jitters=num_jitters
+        )
         return encodings
 
     def is_match(self, encoding: np.ndarray) -> bool:
@@ -99,6 +104,37 @@ class FaceRecognitionService:
         matched = distance <= self._config.face_match_threshold
         self._logger.debug("Face distance: %.4f (threshold: %.2f)", distance, self._config.face_match_threshold)
         return bool(matched)
+
+    def register_from_image_file(
+        self,
+        image_path: Path,
+        num_jitters: int = 1,
+    ) -> Path:
+        """画像ファイルから顔エンコーディングを登録する。"""
+        path = Path(image_path)
+        if not path.exists():
+            raise FileNotFoundError(f"Image not found: {path}")
+
+        image = face_recognition.load_image_file(str(path))
+        locations = face_recognition.face_locations(image, model="hog")
+        face_count = len(locations)
+
+        if face_count == 0:
+            raise ValueError("No face found in image")
+        if face_count > 1:
+            raise ValueError(
+                f"Multiple faces found ({face_count}). Use a photo with one person."
+            )
+
+        encodings = face_recognition.face_encodings(
+            image, locations, num_jitters=num_jitters
+        )
+        if not encodings:
+            raise ValueError("Could not encode face from image")
+
+        save_path = self.save_encoding(encodings[0])
+        self._logger.info("Registered face from image: %s", path)
+        return save_path
 
     def save_encoding(self, encoding: np.ndarray, path: Optional[Path] = None) -> Path:
         """顔エンコーディングを保存する。"""
@@ -150,7 +186,8 @@ class FaceRecognitionService:
         self, frame: np.ndarray
     ) -> Tuple[int, bool, Optional[np.ndarray]]:
         """フレームを解析し (顔数, 一致, エンコーディング) を返す。"""
-        locations = self.detect_faces(frame)
+        rgb_frame, _ = self._prepare_frame(frame)
+        locations = face_recognition.face_locations(rgb_frame, model="hog")
         face_count = len(locations)
 
         if face_count == 0:
@@ -159,7 +196,7 @@ class FaceRecognitionService:
         if self._config.require_single_face and face_count > 1:
             return face_count, False, None
 
-        encodings = self.encode_faces(frame, locations)
+        encodings = self.encode_faces(frame, locations, rgb_frame=rgb_frame)
         if not encodings:
             return face_count, False, None
 
